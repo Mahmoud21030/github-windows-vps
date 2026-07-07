@@ -1,0 +1,21 @@
+# rclone.conf.template
+#
+# Template only.
+# The workflow generates the real configuration file
+# from GitHub Actions secrets during execution.
+#
+# Do not store private keys or OCIDs in this file.
+
+[oci]
+type = oracleobjectstorage
+provider = oracle
+
+namespace = ${OCI_NAMESPACE}
+region = ${OCI_REGION}
+compartment = ${OCI_COMPARTMENT_OCID}
+
+user = ${OCI_USER_OCID}
+tenancy = ${OCI_TENANCY_OCID}
+fingerprint = ${OCI_FINGERPRINT}
+
+key_file = ${OCI_PRIVATE_KEY_FILE}
