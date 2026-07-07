@@ -10,7 +10,11 @@ $logFile = Join-Path $logDir "restore.log"
 New-Item -ItemType Directory -Force -Path $workspace | Out-Null
 New-Item -ItemType Directory -Force -Path $logDir | Out-Null
 
-$rclone = (Get-Command rclone.exe -ErrorAction Stop).Source
+$rclone = "C:\Tools\rclone\rclone.exe"
+
+if (-not (Test-Path $rclone)) {
+    throw "rclone.exe not found at $rclone"
+}
 $config = Join-Path $workspace "config\rclone.conf"
 
 $remote = "oci:$($env:OCI_BUCKET)/workspace"
