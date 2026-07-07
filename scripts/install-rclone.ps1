@@ -15,7 +15,11 @@ try {
         Write-Error "[Install-Rclone] Could not find latest rclone download link."
         exit 1
     }
-    $fullDownloadUrl = "https://rclone.org" + $latestRcloneLink
+    if ($latestRcloneLink.StartsWith("http")) {
+        $fullDownloadUrl = $latestRcloneLink
+    } else {
+        $fullDownloadUrl = "https://rclone.org" + $latestRcloneLink
+    }
     Write-Host "[Install-Rclone] Found latest rclone: $fullDownloadUrl"
 } catch {
     Write-Error "[Install-Rclone] Failed to fetch rclone download URL: $($_.Exception.Message)"
@@ -43,7 +47,13 @@ try {
     if (Test-Path $rcloneInstallPath) {
         Remove-Item -Path $rcloneInstallPath -Recurse -Force
     }
-    Move-Item -Path "$rcloneExtractDir" -Destination $rcloneInstallPath -Force
+    # Find the actual extracted folder name which might vary (e.g., rclone-v1.65.0-windows-amd64)
+    $actualExtractedDir = Get-ChildItem -Path . -Directory -Filter "rclone-*-windows-amd64" | Select-Object -First 1
+    if (-not $actualExtractedDir) {
+        Write-Error "[Install-Rclone] Could not find extracted rclone directory."
+        exit 1
+    }
+    Move-Item -Path $actualExtractedDir.FullName -Destination $rcloneInstallPath -Force
 } catch {
     Write-Error "[Install-Rclone] Failed to move rclone: $($_.Exception.Message)"
     exit 1
