@@ -1,124 +1,90 @@
-name: Windows Backup
+name: Windows Workstation
 
-on:
-  workflow_dispatch:
+on: workflow_dispatch
+
+env:
+  # Set a common working directory for all steps
+  WORKSPACE_PATH: C:\Workspace
 
 jobs:
-  backup:
+  build:
     runs-on: windows-2022
-    timeout-minutes: 355
-
-    env:
-      OCI_USER_OCID: ${{ secrets.OCI_USER_OCID }}
-      OCI_TENANCY_OCID: ${{ secrets.OCI_TENANCY_OCID }}
-      OCI_REGION: ${{ secrets.OCI_REGION }}
-      OCI_FINGERPRINT: ${{ secrets.OCI_FINGERPRINT }}
-      OCI_PRIVATE_KEY: ${{ secrets.OCI_PRIVATE_KEY }}
-      OCI_NAMESPACE: ${{ secrets.OCI_NAMESPACE }}
-      OCI_BUCKET: ${{ secrets.OCI_BUCKET }}
-      OCI_COMPARTMENT_OCID: ${{ secrets.OCI_COMPARTMENT_OCID }}
+    timeout-minutes: 355 # Approximately 6 hours minus 5 minutes for finalization
 
     steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
 
-      - uses: actions/checkout@v4
+    - name: Set up PowerShell environment
+      shell: pwsh
+      run: |
+        $ErrorActionPreference = 'Stop'
+        Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope Process -Force
+        Write-Host "PowerShell environment ready."
 
-      - name: Create Workspace
-        shell: pwsh
-        run: |
-          New-Item -ItemType Directory -Force -Path "C:\Workspace"
+    - name: Install rclone
+      shell: pwsh
+      run: |
+        $ErrorActionPreference = 'Stop'
+        .\scripts\install-rclone.ps1
 
-      - name: Install OCI CLI
-        shell: pwsh
-        run: |
-          Invoke-WebRequest `
-            https://raw.githubusercontent.com/oracle/oci-cli/master/scripts/install/install.ps1 `
-            -OutFile install.ps1
+    - name: Configure OCI and rclone
+      shell: pwsh
+      env:
+        OCI_USER_OCID: ${{ secrets.OCI_USER_OCID }}
+        OCI_TENANCY_OCID: ${{ secrets.OCI_TENANCY_OCID }}
+        OCI_COMPARTMENT_OCID: ${{ secrets.OCI_COMPARTMENT_OCID }}
+        OCI_FINGERPRINT: ${{ secrets.OCI_FINGERPRINT }}
+        OCI_PRIVATE_KEY: ${{ secrets.OCI_PRIVATE_KEY }}
+        OCI_NAMESPACE: ${{ secrets.OCI_NAMESPACE }}
+        OCI_REGION: ${{ secrets.OCI_REGION }}
+        OCI_BUCKET: ${{ secrets.OCI_BUCKET }}
+      run: |
+        $ErrorActionPreference = 'Stop'
+        .\scripts\configure-oci.ps1
 
-          powershell -ExecutionPolicy Bypass -File install.ps1
+    - name: Install Workspace (if needed)
+      shell: pwsh
+      run: |
+        $ErrorActionPreference = 'Stop'
+        .\scripts\install.ps1
 
-      - name: Configure OCI
-        shell: pwsh
-        run: |
+    - name: Restore Workspace
+      shell: pwsh
+      run: |
+        $ErrorActionPreference = 'Stop'
+        .\scripts\restore.ps1
 
-          New-Item `
-            -ItemType Directory `
-            -Force `
-            -Path "$env:USERPROFILE\.oci"
+    - name: Start Autosave in Background
+      shell: pwsh
+      run: |
+        $ErrorActionPreference = 'Stop'
+        # Start autosave.ps1 as a background job. Output is redirected to a file.
+        # This allows the main workflow to continue while autosave runs periodically.
+        Start-Job -FilePath .\scripts\autosave.ps1 -Name "AutosaveWorkspace"
+        Write-Host "Autosave job started in background."
 
-          $env:OCI_PRIVATE_KEY |
-          Out-File `
-          "$env:USERPROFILE\.oci\oci_api_key.pem" `
-          -Encoding ascii
+    - name: Keep Alive / User Workstation
+      shell: pwsh
+      run: |
+        Write-Host "Workspace is ready at C:\Workspace. You can now interact with the runner."
+        Write-Host "Autosave is running in the background, syncing changes every 10 minutes."
+        Write-Host "This session will remain active until the workflow timeout (approx. 355 minutes)."
+        
+        # Keep alive for ~350 minutes (21000 seconds), leaving ~5 minutes for finalization.
+        Start-Sleep -Seconds 21000
 
-          @"
-          [DEFAULT]
-          user=$env:OCI_USER_OCID
-          fingerprint=$env:OCI_FINGERPRINT
-          tenancy=$env:OCI_TENANCY_OCID
-          region=$env:OCI_REGION
-          key_file=$env:USERPROFILE\.oci\oci_api_key.pem
-          "@ |
-          Out-File `
-          "$env:USERPROFILE\.oci\config" `
-          -Encoding ascii
+    - name: Stop Autosave Job
+      if: always()
+      shell: pwsh
+      run: |
+        $ErrorActionPreference = 'Stop'
+        Get-Job -Name "AutosaveWorkspace" | Stop-Job -PassThru | Remove-Job
+        Write-Host "Autosave job stopped."
 
-      - name: Restore Backup
-        shell: pwsh
-        run: |
-
-          $exists=$false
-
-          try{
-            oci os object head `
-            --namespace-name $env:OCI_NAMESPACE `
-            --bucket-name $env:OCI_BUCKET `
-            --name backup.zip
-
-            $exists=$true
-          }
-          catch{
-            Write-Host "No Backup Found"
-          }
-
-          if($exists){
-
-            oci os object get `
-            --namespace-name $env:OCI_NAMESPACE `
-            --bucket-name $env:OCI_BUCKET `
-            --name backup.zip `
-            --file C:\backup.zip
-
-            Expand-Archive `
-            C:\backup.zip `
-            C:\Workspace `
-            -Force
-
-          }
-
-      - name: Wait For User Work
-        shell: pwsh
-        run: |
-
-          Write-Host "Start working..."
-
-          Start-Sleep -Seconds 300
-
-      - name: Create Backup
-        shell: pwsh
-        run: |
-
-          Compress-Archive `
-          C:\Workspace\* `
-          C:\backup.zip `
-          -Force
-
-      - name: Upload Backup
-        shell: pwsh
-        run: |
-
-          oci os object put `
-          --namespace-name $env:OCI_NAMESPACE `
-          --bucket-name $env:OCI_BUCKET `
-          --name backup.zip `
-          --file C:\backup.zip `
-          --force
+    - name: Finalize Backup
+      if: always()
+      shell: pwsh
+      run: |
+        $ErrorActionPreference = 'Stop'
+        .\scripts\finalize.ps1
