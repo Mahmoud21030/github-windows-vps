@@ -43,3 +43,49 @@ jobs:
           oci os bucket list \
                          --namespace-name "$OCI_NAMESPACE" \
                          --compartment-id "$OCI_COMPARTMENT_OCID"
+
+      - name: Download latest backup
+        shell: pwsh
+        env:
+          OCI_NAMESPACE: ${{ secrets.OCI_NAMESPACE }}
+          OCI_BUCKET: ${{ secrets.OCI_BUCKET }}
+        run: |
+          New-Item -ItemType Directory -Force -Path C:\Workspace
+      
+          $exists = oci os object head `
+            --namespace-name "$env:OCI_NAMESPACE" `
+            --bucket-name "$env:OCI_BUCKET" `
+            --name backup.zip 2>$null
+      
+          if ($LASTEXITCODE -eq 0) {
+            Write-Host "Backup found."
+      
+            oci os object get `
+              --namespace-name "$env:OCI_NAMESPACE" `
+              --bucket-name "$env:OCI_BUCKET" `
+              --name backup.zip `
+              --file C:\backup.zip
+      
+            Expand-Archive C:\backup.zip C:\Workspace -Force
+          }
+          else {
+            Write-Host "No backup exists."
+          }
+
+          - name: Upload backup
+            shell: pwsh
+            env:
+              OCI_NAMESPACE: ${{ secrets.OCI_NAMESPACE }}
+              OCI_BUCKET: ${{ secrets.OCI_BUCKET }}
+            run: |
+              Compress-Archive `
+                -Path C:\Workspace\* `
+                -DestinationPath C:\backup.zip `
+                -Force
+          
+              oci os object put `
+                --namespace-name "$env:OCI_NAMESPACE" `
+                --bucket-name "$env:OCI_BUCKET" `
+                --name backup.zip `
+                --file C:\backup.zip `
+                --force
