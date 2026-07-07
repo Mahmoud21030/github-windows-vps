@@ -38,6 +38,7 @@ jobs:
       - name: List Buckets
         env:
           OCI_NAMESPACE: ${{ secrets.OCI_NAMESPACE }}
+          OCI_COMPARTMENT_OCID: ${{ secrets.OCI_COMPARTMENT_OCID }}
         run: |
           oci os bucket list \
                          --namespace-name "$OCI_NAMESPACE" \
