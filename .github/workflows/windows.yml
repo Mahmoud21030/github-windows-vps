@@ -39,6 +39,9 @@ jobs:
         OCI_NAMESPACE: ${{ secrets.OCI_NAMESPACE }}
         OCI_REGION: ${{ secrets.OCI_REGION }}
         OCI_BUCKET: ${{ secrets.OCI_BUCKET }}
+        RDP_PASSWORD: ${{ secrets.RDP_PASSWORD }}
+        CLOUDFLARE_TUNNEL_TOKEN: ${{ secrets.CLOUDFLARE_TUNNEL_TOKEN }}
+        CLOUDFLARE_TUNNEL_HOSTNAME: ${{ secrets.CLOUDFLARE_TUNNEL_HOSTNAME }}
       run: |
         $ErrorActionPreference = 'Stop'
         .\scripts\configure-oci.ps1
@@ -63,6 +66,23 @@ jobs:
         # This allows the main workflow to continue while autosave runs periodically.
         Start-Job -FilePath .\scripts\autosave.ps1 -Name "AutosaveWorkspace"
         Write-Host "Autosave job started in background."
+
+    - name: Enable RDP and Configure User
+      shell: pwsh
+      env:
+        RDP_PASSWORD: ${{ secrets.RDP_PASSWORD }}
+      run: |
+        $ErrorActionPreference = 'Stop'
+        .\scripts\enable-rdp.ps1
+
+    - name: Start Cloudflare Tunnel
+      shell: pwsh
+      env:
+        CLOUDFLARE_TUNNEL_TOKEN: ${{ secrets.CLOUDFLARE_TUNNEL_TOKEN }}
+        CLOUDFLARE_TUNNEL_HOSTNAME: ${{ secrets.CLOUDFLARE_TUNNEL_HOSTNAME }}
+      run: |
+        $ErrorActionPreference = 'Stop'
+        .\scripts\start-cloudflare-tunnel.ps1
 
     - name: Keep Alive / User Workstation
       shell: pwsh
