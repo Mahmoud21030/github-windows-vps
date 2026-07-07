@@ -1,11 +1,18 @@
-[oci_backup]
+# rclone.conf.template
+# this file is a template only
+# real values are generated during workflow execution
+# credentials must come from github secrets
+
+[oci]
 type = oracleobjectstorage
-provider = oci
-namespace = {{OCI_NAMESPACE}}
-region = {{OCI_REGION}}
-compartment = {{OCI_COMPARTMENT_OCID}}
-config_file = %USERPROFILE%\.oci\config
-key_file = %USERPROFILE%\.oci\oci_api_key.pem
-user_ocid = {{OCI_USER_OCID}}
-tenancy_ocid = {{OCI_TENANCY_OCID}}
-fingerprint = {{OCI_FINGERPRINT}}
+provider = oracle
+
+namespace = ${OCI_NAMESPACE}
+region = ${OCI_REGION}
+compartment = ${OCI_COMPARTMENT_OCID}
+
+user = ${OCI_USER_OCID}
+tenancy = ${OCI_TENANCY_OCID}
+fingerprint = ${OCI_FINGERPRINT}
+
+key_file = ${OCI_PRIVATE_KEY_FILE}
