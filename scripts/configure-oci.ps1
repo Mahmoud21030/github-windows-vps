@@ -49,7 +49,7 @@ $privateKey = $env:OCI_PRIVATE_KEY -replace "`r`n", "`n"
 Set-Content `
     -Path $keyFile `
     -Value $privateKey `
-    -Encoding ascii
+    -Encoding utf8
 
 
 
@@ -72,22 +72,39 @@ key_file=$keyFile
 Write-Log "Creating rclone configuration."
 
 
+Write-Log "Creating OCI config."
+
+
+@"
+[DEFAULT]
+user=$($env:OCI_USER_OCID)
+tenancy=$($env:OCI_TENANCY_OCID)
+fingerprint=$($env:OCI_FINGERPRINT)
+region=$($env:OCI_REGION)
+key_file=$keyFile
+"@ | Set-Content `
+    -Path $ociConfig `
+    -Encoding ascii
+
+
+
+Write-Log "Creating rclone configuration."
+
+
 @"
 [oci]
 type = oracleobjectstorage
-provider = oracle
+provider = user_principal_auth
+
 namespace = $($env:OCI_NAMESPACE)
-region = $($env:OCI_REGION)
 compartment = $($env:OCI_COMPARTMENT_OCID)
+region = $($env:OCI_REGION)
 
-user = $($env:OCI_USER_OCID)
-tenancy = $($env:OCI_TENANCY_OCID)
-fingerprint = $($env:OCI_FINGERPRINT)
-key_file = $keyFile
+config_file = $ociConfig
+config_profile = DEFAULT
 "@ | Set-Content `
-        -Path $RcloneConfig `
-        -Encoding ascii
-
+    -Path $RcloneConfig `
+    -Encoding ascii
 
 
 Write-Log "Testing rclone configuration."
