@@ -1,93 +1,124 @@
-name: Oracle Test
+name: Windows Backup
 
 on:
   workflow_dispatch:
 
-
 jobs:
-  windows:
+  backup:
     runs-on: windows-2022
     timeout-minutes: 355
 
+    env:
+      OCI_USER_OCID: ${{ secrets.OCI_USER_OCID }}
+      OCI_TENANCY_OCID: ${{ secrets.OCI_TENANCY_OCID }}
+      OCI_REGION: ${{ secrets.OCI_REGION }}
+      OCI_FINGERPRINT: ${{ secrets.OCI_FINGERPRINT }}
+      OCI_PRIVATE_KEY: ${{ secrets.OCI_PRIVATE_KEY }}
+      OCI_NAMESPACE: ${{ secrets.OCI_NAMESPACE }}
+      OCI_BUCKET: ${{ secrets.OCI_BUCKET }}
+      OCI_COMPARTMENT_OCID: ${{ secrets.OCI_COMPARTMENT_OCID }}
+
     steps:
-      - name: Install OCI CLI
+
+      - uses: actions/checkout@v4
+
+      - name: Create Workspace
+        shell: pwsh
         run: |
-          bash -c "$(curl -L https://raw.githubusercontent.com/oracle/oci-cli/master/scripts/install/install.sh)" -- --accept-all-defaults
-          echo "$HOME/bin" >> $GITHUB_PATH
+          New-Item -ItemType Directory -Force -Path "C:\Workspace"
+
+      - name: Install OCI CLI
+        shell: pwsh
+        run: |
+          Invoke-WebRequest `
+            https://raw.githubusercontent.com/oracle/oci-cli/master/scripts/install/install.ps1 `
+            -OutFile install.ps1
+
+          powershell -ExecutionPolicy Bypass -File install.ps1
 
       - name: Configure OCI
-        env:
-          OCI_USER_OCID: ${{ secrets.OCI_USER_OCID }}
-          OCI_TENANCY_OCID: ${{ secrets.OCI_TENANCY_OCID }}
-          OCI_REGION: ${{ secrets.OCI_REGION }}
-          OCI_FINGERPRINT: ${{ secrets.OCI_FINGERPRINT }}
-          OCI_PRIVATE_KEY: ${{ secrets.OCI_PRIVATE_KEY }}
-          OCI_COMPARTMENT_OCID: ${{ secrets.OCI_COMPARTMENT_OCID }}
+        shell: pwsh
         run: |
-          mkdir -p ~/.oci
-          echo "$OCI_PRIVATE_KEY" > ~/.oci/oci_api_key.pem
-          chmod 600 ~/.oci/oci_api_key.pem
 
-          cat > ~/.oci/config <<EOF
+          New-Item `
+            -ItemType Directory `
+            -Force `
+            -Path "$env:USERPROFILE\.oci"
+
+          $env:OCI_PRIVATE_KEY |
+          Out-File `
+          "$env:USERPROFILE\.oci\oci_api_key.pem" `
+          -Encoding ascii
+
+          @"
           [DEFAULT]
-          user=$OCI_USER_OCID
-          fingerprint=$OCI_FINGERPRINT
-          tenancy=$OCI_TENANCY_OCID
-          region=$OCI_REGION
-          key_file=~/.oci/oci_api_key.pem
-          EOF
+          user=$env:OCI_USER_OCID
+          fingerprint=$env:OCI_FINGERPRINT
+          tenancy=$env:OCI_TENANCY_OCID
+          region=$env:OCI_REGION
+          key_file=$env:USERPROFILE\.oci\oci_api_key.pem
+          "@ |
+          Out-File `
+          "$env:USERPROFILE\.oci\config" `
+          -Encoding ascii
 
-      - name: List Buckets
-        env:
-          OCI_NAMESPACE: ${{ secrets.OCI_NAMESPACE }}
-          OCI_COMPARTMENT_OCID: ${{ secrets.OCI_COMPARTMENT_OCID }}
-        run: |
-          oci os bucket list \
-                         --namespace-name "$OCI_NAMESPACE" \
-                         --compartment-id "$OCI_COMPARTMENT_OCID"
-
-      - name: Download latest backup
+      - name: Restore Backup
         shell: pwsh
-        env:
-          OCI_NAMESPACE: ${{ secrets.OCI_NAMESPACE }}
-          OCI_BUCKET: ${{ secrets.OCI_BUCKET }}
         run: |
-          New-Item -ItemType Directory -Force -Path C:\Workspace
-      
-          $exists = oci os object head `
-            --namespace-name "$env:OCI_NAMESPACE" `
-            --bucket-name "$env:OCI_BUCKET" `
-            --name backup.zip 2>$null
-      
-          if ($LASTEXITCODE -eq 0) {
-            Write-Host "Backup found."
-      
+
+          $exists=$false
+
+          try{
+            oci os object head `
+            --namespace-name $env:OCI_NAMESPACE `
+            --bucket-name $env:OCI_BUCKET `
+            --name backup.zip
+
+            $exists=$true
+          }
+          catch{
+            Write-Host "No Backup Found"
+          }
+
+          if($exists){
+
             oci os object get `
-              --namespace-name "$env:OCI_NAMESPACE" `
-              --bucket-name "$env:OCI_BUCKET" `
-              --name backup.zip `
-              --file C:\backup.zip
-      
-            Expand-Archive C:\backup.zip C:\Workspace -Force
-          }
-          else {
-            Write-Host "No backup exists."
+            --namespace-name $env:OCI_NAMESPACE `
+            --bucket-name $env:OCI_BUCKET `
+            --name backup.zip `
+            --file C:\backup.zip
+
+            Expand-Archive `
+            C:\backup.zip `
+            C:\Workspace `
+            -Force
+
           }
 
-      - name: Upload backup
+      - name: Wait For User Work
         shell: pwsh
-        env:
-          OCI_NAMESPACE: ${{ secrets.OCI_NAMESPACE }}
-          OCI_BUCKET: ${{ secrets.OCI_BUCKET }}
         run: |
+
+          Write-Host "Start working..."
+
+          Start-Sleep -Seconds 300
+
+      - name: Create Backup
+        shell: pwsh
+        run: |
+
           Compress-Archive `
-            -Path C:\Workspace\* `
-            -DestinationPath C:\backup.zip `
-            -Force
-      
+          C:\Workspace\* `
+          C:\backup.zip `
+          -Force
+
+      - name: Upload Backup
+        shell: pwsh
+        run: |
+
           oci os object put `
-            --namespace-name "$env:OCI_NAMESPACE" `
-            --bucket-name "$env:OCI_BUCKET" `
-            --name backup.zip `
-            --file C:\backup.zip `
-            --force
+          --namespace-name $env:OCI_NAMESPACE `
+          --bucket-name $env:OCI_BUCKET `
+          --name backup.zip `
+          --file C:\backup.zip `
+          --force
