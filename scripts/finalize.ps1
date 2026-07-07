@@ -85,7 +85,20 @@ if (-not $backupSuccess) {
 Write-Log "Running final upload verification."
 
 $config = Join-Path $workspace "config\rclone.conf"
-$rclone = (Get-Command rclone.exe -ErrorAction Stop).Source
+$rclone = "C:\Tools\rclone\rclone.exe"
+
+if (-not (Test-Path $rclone)) {
+
+    $cmd = Get-Command rclone.exe -ErrorAction SilentlyContinue
+
+    if ($cmd) {
+        $rclone = $cmd.Source
+    }
+    else {
+        throw "rclone.exe was not found."
+    }
+}
+
 
 $remote = "oci:$($env:OCI_BUCKET)/workspace"
 
@@ -94,6 +107,32 @@ $verifySuccess = Invoke-WithRetry {
     & $rclone check `
         $workspace `
         $remote `
+        --config $config `
+        --one-way
+
+    if ($LASTEXITCODE -gt 1) {
+
+        throw "Remote verification failed."
+    }
+
+}
+
+if (-not $verifySuccess) {
+
+    Write-Log "Final verification failed."
+
+    throw "Final backup verification failed."
+}
+
+Write-Log ""
+Write-Log "================================"
+Write-Log " Final backup completed."
+Write-Log " Workspace preserved."
+Write-Log " Workflow can exit safely."
+Write-Log "================================"
+Write-Log ""
+
+exit 0        $remote `
         --config $config `
         --one-way
 
