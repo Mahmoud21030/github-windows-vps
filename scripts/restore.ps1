@@ -1,67 +1,155 @@
-$ErrorActionPreference = 'Stop'
+# restore.ps1
+# restores workspace from oracle object storage
 
-Write-Host "[Restore] Starting workspace restoration script..."
+$ErrorActionPreference = "Stop"
 
-$workspacePath = "C:\Workspace"
-$rcloneRemote = "oci_backup:$env:OCI_BUCKET/workspace_backup"
+$workspace = "C:\Workspace"
+$logDir = Join-Path $workspace "logs"
+$logFile = Join-Path $logDir "restore.log"
 
-# Function to execute rclone commands with retry logic
-function Invoke-RcloneWithRetry {
+New-Item -ItemType Directory -Force -Path $workspace | Out-Null
+New-Item -ItemType Directory -Force -Path $logDir | Out-Null
+
+$rclone = (Get-Command rclone.exe -ErrorAction Stop).Source
+$config = Join-Path $workspace "config\rclone.conf"
+
+$remote = "oci:$($env:OCI_BUCKET)/workspace"
+
+function Write-Log {
+    param([string]$Message)
+
+    $time = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
+    $line = "[$time] $Message"
+
+    Write-Host $line
+    Add-Content -Path $logFile -Value $line
+}
+
+function Invoke-WithRetry {
     param(
-        [string]$Command,
-        [int]$MaxRetries = 5,
-        [int]$RetryDelaySeconds = 10
+        [scriptblock]$Action,
+        [int]$RetryCount = 5,
+        [int]$DelaySeconds = 15
     )
 
-    for ($i = 1; $i -le $MaxRetries; $i++) {
-        Write-Host "[Restore] Attempt $i of $MaxRetries: rclone $Command"
-        $process = Start-Process -FilePath "rclone" -ArgumentList $Command -NoNewWindow -PassThru -Wait
-        
-        if ($process.ExitCode -eq 0) {
+    for ($i = 1; $i -le $RetryCount; $i++) {
+
+        try {
+            & $Action
             return $true
-        } else {
-            Write-Warning "[Restore] rclone command failed with exit code $($process.ExitCode). Retrying in $RetryDelaySeconds seconds..."
-            Start-Sleep -Seconds $RetryDelaySeconds
         }
-    }
-    Write-Error "[Restore] rclone command failed after $MaxRetries attempts: $Command"
-    return $false
-}
+        catch {
 
-# Check if backup exists
-Write-Host "[Restore] Checking for existing backup at $rcloneRemote..."
-try {
-    # Use rclone size to check if the remote path exists and has content
-    # If it fails, it means the remote path doesn't exist or is empty
-    $checkResult = Invoke-RcloneWithRetry -Command "size $rcloneRemote --json" -MaxRetries 3
-    
-    if ($checkResult) {
-        Write-Host "[Restore] Backup found. Proceeding with download."
-        
-        # Download and restore workspace
-        Write-Host "[Restore] Downloading workspace from $rcloneRemote to $workspacePath..."
-        $rcloneSyncCommand = "sync $rcloneRemote $workspacePath --create-empty-src-dirs --fast-list --transfers 16 --checkers 16 --retries 3 --low-level-retries 10 --log-level INFO"
-        if (-not (Invoke-RcloneWithRetry -Command $rcloneSyncCommand -MaxRetries 5)) {
-            Write-Error "[Restore] Failed to download workspace after multiple retries."
-            exit 1
+            Write-Log "Attempt $i failed."
+
+            if ($i -eq $RetryCount) {
+                Write-Log "Maximum retries reached."
+                return $false
+            }
+
+            Start-Sleep -Seconds $DelaySeconds
         }
-        Write-Host "[Restore] Workspace restoration complete."
-    } else {
-        Write-Host "[Restore] No backup found or backup is empty. Creating an empty workspace."
-        if (-not (Test-Path $workspacePath)) {
-            New-Item -Path $workspacePath -ItemType Directory | Out-Null
-            Write-Host "[Restore] Empty workspace created at $workspacePath."
-        } else {
-            Write-Host "[Restore] Workspace directory already exists and is empty."
-        }
-    }
-} catch {
-    Write-Warning "[Restore] An error occurred during backup check or download: $($_.Exception.Message)"
-    Write-Host "[Restore] Assuming no backup exists and creating an empty workspace."
-    if (-not (Test-Path $workspacePath)) {
-        New-Item -Path $workspacePath -ItemType Directory | Out-Null
-        Write-Host "[Restore] Empty workspace created at $workspacePath."
     }
 }
 
-Write-Host "[Restore] Workspace restoration script finished."
+Write-Log "Starting workspace restore."
+
+$exists = $false
+
+Invoke-WithRetry {
+
+    $output = & $rclone lsf `
+        $remote `
+        --config $config
+
+    if ($LASTEXITCODE -ne 0) {
+        throw "Unable to access bucket."
+    }
+
+    if ($output) {
+        $script:exists = $true
+    }
+} | Out-Null
+
+if (-not $exists) {
+
+    Write-Log "No existing backup found."
+
+    New-Item `
+        -ItemType Directory `
+        -Force `
+        -Path $workspace | Out-Null
+
+    Write-Log "Created empty workspace."
+
+    return
+}
+
+Write-Log "Backup detected."
+
+$ok = Invoke-WithRetry {
+
+    & $rclone sync `
+        $remote `
+        $workspace `
+        --config $config `
+        --create-empty-src-dirs `
+        --transfers 8 `
+        --checkers 8 `
+        --fast-list `
+        --retries 5 `
+        --retries-sleep 10s `
+        --low-level-retries 10 `
+        --copy-links `
+        --links `
+        --metadata `
+        --progress `
+        --stats 30s
+
+    if ($LASTEXITCODE -ne 0) {
+        throw "Restore failed."
+    }
+
+}
+
+if (-not $ok) {
+    throw "Workspace restore failed after multiple retries."
+}
+
+Write-Log "Verifying restored files."
+
+$verify = Invoke-WithRetry {
+
+    & $rclone check `
+        $remote `
+        $workspace `
+        --config $config `
+        --one-way
+
+    if ($LASTEXITCODE -gt 1) {
+        throw "Verification failed."
+    }
+
+}
+
+if (-not $verify) {
+    throw "Restore verification failed."
+}
+
+$fileCount = (Get-ChildItem `
+    -Path $workspace `
+    -File `
+    -Recurse `
+    -ErrorAction SilentlyContinue).Count
+
+$folderCount = (Get-ChildItem `
+    -Path $workspace `
+    -Directory `
+    -Recurse `
+    -ErrorAction SilentlyContinue).Count
+
+Write-Log ""
+Write-Log "Restore completed successfully."
+Write-Log "Files restored : $fileCount"
+Write-Log "Folders        : $folderCount"
+Write-Log ""
