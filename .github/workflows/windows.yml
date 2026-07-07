@@ -72,20 +72,20 @@ jobs:
             Write-Host "No backup exists."
           }
 
-          - name: Upload backup
-            shell: pwsh
-            env:
-              OCI_NAMESPACE: ${{ secrets.OCI_NAMESPACE }}
-              OCI_BUCKET: ${{ secrets.OCI_BUCKET }}
-            run: |
-              Compress-Archive `
-                -Path C:\Workspace\* `
-                -DestinationPath C:\backup.zip `
-                -Force
-          
-              oci os object put `
-                --namespace-name "$env:OCI_NAMESPACE" `
-                --bucket-name "$env:OCI_BUCKET" `
-                --name backup.zip `
-                --file C:\backup.zip `
-                --force
+      - name: Upload backup
+        shell: pwsh
+        env:
+          OCI_NAMESPACE: ${{ secrets.OCI_NAMESPACE }}
+          OCI_BUCKET: ${{ secrets.OCI_BUCKET }}
+        run: |
+          Compress-Archive `
+            -Path C:\Workspace\* `
+            -DestinationPath C:\backup.zip `
+            -Force
+      
+          oci os object put `
+            --namespace-name "$env:OCI_NAMESPACE" `
+            --bucket-name "$env:OCI_BUCKET" `
+            --name backup.zip `
+            --file C:\backup.zip `
+            --force
