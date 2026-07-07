@@ -1,110 +1,86 @@
-name: Windows Workstation
+name: Windows Workspace
 
-on: workflow_dispatch
+on:
+  workflow_dispatch:
 
-env:
-  # Set a common working directory for all steps
-  WORKSPACE_PATH: C:\Workspace
+permissions:
+  contents: read
 
 jobs:
-  build:
+  workspace:
     runs-on: windows-2022
-    timeout-minutes: 355 # Approximately 6 hours minus 5 minutes for finalization
+    timeout-minutes: 355
+
+    env:
+      WORKSPACE_DIR: C:\Workspace
+      LOG_DIR: C:\Workspace\logs
+      OCI_CONFIG_FILE: C:\Workspace\config\oci_config
+      RCLONE_CONFIG: C:\Workspace\config\rclone.conf
+
+      OCI_USER_OCID: ${{ secrets.OCI_USER_OCID }}
+      OCI_TENANCY_OCID: ${{ secrets.OCI_TENANCY_OCID }}
+      OCI_COMPARTMENT_OCID: ${{ secrets.OCI_COMPARTMENT_OCID }}
+      OCI_FINGERPRINT: ${{ secrets.OCI_FINGERPRINT }}
+      OCI_PRIVATE_KEY: ${{ secrets.OCI_PRIVATE_KEY }}
+      OCI_NAMESPACE: ${{ secrets.OCI_NAMESPACE }}
+      OCI_REGION: ${{ secrets.OCI_REGION }}
+      OCI_BUCKET: ${{ secrets.OCI_BUCKET }}
+
+    defaults:
+      run:
+        shell: powershell
 
     steps:
-    - name: Checkout repository
-      uses: actions/checkout@v4
+      - name: Checkout Repository
+        uses: actions/checkout@v4
 
-    - name: Set up PowerShell environment
-      shell: pwsh
-      run: |
-        $ErrorActionPreference = 'Stop'
-        Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope Process -Force
-        Write-Host "PowerShell environment ready."
+      - name: Create Workspace
+        run: |
+          New-Item -ItemType Directory -Force -Path $env:WORKSPACE_DIR | Out-Null
+          New-Item -ItemType Directory -Force -Path "$env:WORKSPACE_DIR\config" | Out-Null
+          New-Item -ItemType Directory -Force -Path "$env:WORKSPACE_DIR\logs" | Out-Null
 
-    - name: Install rclone
-      shell: pwsh
-      run: |
-        $ErrorActionPreference = 'Stop'
-        .\scripts\install-rclone.ps1
+      - name: Install rclone
+        run: |
+          .\scripts\install-rclone.ps1
 
-    - name: Configure OCI and rclone
-      shell: pwsh
-      env:
-        OCI_USER_OCID: ${{ secrets.OCI_USER_OCID }}
-        OCI_TENANCY_OCID: ${{ secrets.OCI_TENANCY_OCID }}
-        OCI_COMPARTMENT_OCID: ${{ secrets.OCI_COMPARTMENT_OCID }}
-        OCI_FINGERPRINT: ${{ secrets.OCI_FINGERPRINT }}
-        OCI_PRIVATE_KEY: ${{ secrets.OCI_PRIVATE_KEY }}
-        OCI_NAMESPACE: ${{ secrets.OCI_NAMESPACE }}
-        OCI_REGION: ${{ secrets.OCI_REGION }}
-        OCI_BUCKET: ${{ secrets.OCI_BUCKET }}
-        RDP_PASSWORD: ${{ secrets.RDP_PASSWORD }}
-        CLOUDFLARE_TUNNEL_TOKEN: ${{ secrets.CLOUDFLARE_TUNNEL_TOKEN }}
-        CLOUDFLARE_TUNNEL_HOSTNAME: ${{ secrets.CLOUDFLARE_TUNNEL_HOSTNAME }}
-      run: |
-        $ErrorActionPreference = 'Stop'
-        .\scripts\configure-oci.ps1
+      - name: Configure Oracle Cloud
+        run: |
+          .\scripts\configure-oci.ps1
 
-    - name: Install Workspace (if needed)
-      shell: pwsh
-      run: |
-        $ErrorActionPreference = 'Stop'
-        .\scripts\install.ps1
+      - name: Restore Workspace
+        run: |
+          .\scripts\restore.ps1
 
-    - name: Restore Workspace
-      shell: pwsh
-      run: |
-        $ErrorActionPreference = 'Stop'
-        .\scripts\restore.ps1
+      - name: Start Autosave
+        run: |
+          Start-Process powershell `
+            -ArgumentList "-ExecutionPolicy Bypass -File `"$PWD\scripts\autosave.ps1`"" `
+            -WindowStyle Hidden
 
-    - name: Start Autosave in Background
-      shell: pwsh
-      run: |
-        $ErrorActionPreference = 'Stop'
-        # Start autosave.ps1 as a background job. Output is redirected to a file.
-        # This allows the main workflow to continue while autosave runs periodically.
-        Start-Job -FilePath .\scripts\autosave.ps1 -Name "AutosaveWorkspace"
-        Write-Host "Autosave job started in background."
+      - name: Prepare Environment
+        run: |
+          .\scripts\install.ps1
 
-    - name: Enable RDP and Configure User
-      shell: pwsh
-      env:
-        RDP_PASSWORD: ${{ secrets.RDP_PASSWORD }}
-      run: |
-        $ErrorActionPreference = 'Stop'
-        .\scripts\enable-rdp.ps1
+      - name: Workspace Ready
+        run: |
+          Write-Host ""
+          Write-Host "==============================================="
+          Write-Host " Workspace restored to:"
+          Write-Host " $env:WORKSPACE_DIR"
+          Write-Host ""
+          Write-Host " Autosave is running every 10 minutes."
+          Write-Host "==============================================="
+          Write-Host ""
 
-    - name: Start Cloudflare Tunnel
-      shell: pwsh
-      env:
-        CLOUDFLARE_TUNNEL_TOKEN: ${{ secrets.CLOUDFLARE_TUNNEL_TOKEN }}
-        CLOUDFLARE_TUNNEL_HOSTNAME: ${{ secrets.CLOUDFLARE_TUNNEL_HOSTNAME }}
-      run: |
-        $ErrorActionPreference = 'Stop'
-        .\scripts\start-cloudflare-tunnel.ps1
+      #
+      # ----------------------------------------------------
+      # Add your own build/test/workstation commands here.
+      # Everything inside C:\Workspace will be preserved.
+      # ----------------------------------------------------
+      #
 
-    - name: Keep Alive / User Workstation
-      shell: pwsh
-      run: |
-        Write-Host "Workspace is ready at C:\Workspace. You can now interact with the runner."
-        Write-Host "Autosave is running in the background, syncing changes every 10 minutes."
-        Write-Host "This session will remain active until the workflow timeout (approx. 355 minutes)."
-        
-        # Keep alive for ~350 minutes (21000 seconds), leaving ~5 minutes for finalization.
-        Start-Sleep -Seconds 21000
-
-    - name: Stop Autosave Job
-      if: always()
-      shell: pwsh
-      run: |
-        $ErrorActionPreference = 'Stop'
-        Get-Job -Name "AutosaveWorkspace" | Stop-Job -PassThru | Remove-Job
-        Write-Host "Autosave job stopped."
-
-    - name: Finalize Backup
-      if: always()
-      shell: pwsh
-      run: |
-        $ErrorActionPreference = 'Stop'
-        .\scripts\finalize.ps1
+      - name: Final Backup
+        if: always()
+        run: |
+          .\scripts\finalize.ps1
