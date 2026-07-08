@@ -1,16 +1,20 @@
 # install-rclone.ps1
-# installs rclone for windows github runners
+# installs latest rclone on github windows runner
+
+$ErrorActionPreference = "Stop"
 
 . "$PSScriptRoot\common.ps1"
 
-Start-Log "install-rclone"
+$LogFile = "install-rclone.log"
+
+Write-Log "Starting rclone installation." $LogFile
 
 $installDir = "C:\Tools\rclone"
 $rcloneExe = Join-Path $installDir "rclone.exe"
 
 $tempDir = Join-Path $env:TEMP "rclone-download"
-
 $zipFile = Join-Path $tempDir "rclone.zip"
+$extractDir = Join-Path $tempDir "extract"
 
 New-Item `
     -ItemType Directory `
@@ -22,10 +26,9 @@ New-Item `
     -Force `
     -Path $tempDir | Out-Null
 
-
 function Install-Rclone {
 
-    Write-Log "Checking existing rclone."
+    Write-Log "Checking existing installation." $LogFile
 
     if (Test-Path $rcloneExe) {
 
@@ -33,49 +36,57 @@ function Install-Rclone {
 
             $version = & $rcloneExe version
 
-            Write-Log "Existing installation found."
-            Write-Log $version[0]
+            if ($LASTEXITCODE -eq 0) {
 
-            return
+                Write-Log $version[0] $LogFile
+
+                $env:PATH += ";$installDir"
+
+                if ($env:GITHUB_PATH) {
+
+                    "$installDir" | Out-File `
+                        -FilePath $env:GITHUB_PATH `
+                        -Encoding utf8 `
+                        -Append
+
+                }
+
+                return
+
+            }
+
         }
         catch {
 
-            Write-Log "Existing rclone is invalid."
+            Write-Log "Existing rclone is invalid." $LogFile
+
         }
+
     }
 
-
-    Write-Log "Downloading latest rclone."
+    Write-Log "Downloading latest release." $LogFile
 
     Invoke-Retry {
 
         $release = Invoke-RestMethod `
             -Uri "https://api.github.com/repos/rclone/rclone/releases/latest" `
             -Headers @{
-                "User-Agent"="github-actions"
+                "User-Agent" = "github-actions"
             }
-
 
         $asset = $release.assets |
             Where-Object {
-
                 $_.name -match "windows-amd64.zip$"
-
             } |
             Select-Object -First 1
 
-
         if ($null -eq $asset) {
 
-            throw "Windows AMD64 rclone package not found."
+            throw "Unable to locate Windows AMD64 release."
+
         }
 
-
-        Write-Log "Version: $($release.tag_name)"
-
-        Write-Log "Downloading:"
-        Write-Log $asset.name
-
+        Write-Log "Version: $($release.tag_name)" $LogFile
 
         Invoke-WebRequest `
             -Uri $asset.browser_download_url `
@@ -84,32 +95,21 @@ function Install-Rclone {
 
     }
 
-
-
-    Write-Log "Extracting archive."
-
-
-    $extractDir = Join-Path $tempDir "extract"
-
-
     if (Test-Path $extractDir) {
 
         Remove-Item `
             -Path $extractDir `
-            -Recurse `
-            -Force
+            -Force `
+            -Recurse
+
     }
 
+    Write-Log "Extracting archive." $LogFile
 
     Expand-Archive `
         -Path $zipFile `
         -DestinationPath $extractDir `
         -Force
-
-
-
-    Write-Log "Searching for rclone.exe."
-
 
     $binary = Get-ChildItem `
         -Path $extractDir `
@@ -117,51 +117,50 @@ function Install-Rclone {
         -Recurse |
         Select-Object -First 1
 
-
     if ($null -eq $binary) {
 
-        throw "rclone.exe missing after extraction."
+        throw "rclone.exe not found after extraction."
+
     }
-
-
 
     Copy-Item `
         -Path $binary.FullName `
         -Destination $rcloneExe `
         -Force
 
+    $env:PATH += ";$installDir"
 
+    if ($env:GITHUB_PATH) {
 
-    Write-Log "Testing installation."
+        "$installDir" | Out-File `
+            -FilePath $env:GITHUB_PATH `
+            -Encoding utf8 `
+            -Append
 
+    }
 
-    & $rcloneExe version
-
+    $version = & $rcloneExe version
 
     if ($LASTEXITCODE -ne 0) {
 
         throw "rclone verification failed."
+
     }
 
+    Write-Log $version[0] $LogFile
 
-    Write-Log "rclone installed successfully."
+    Write-Log "Installation completed successfully." $LogFile
 
 }
 
-
-
 Install-Rclone
 
-
-
-Write-Log "Cleaning temporary files."
-
+Write-Log "Cleaning temporary files." $LogFile
 
 Remove-Item `
     -Path $tempDir `
-    -Recurse `
     -Force `
+    -Recurse `
     -ErrorAction SilentlyContinue
 
-
-Write-Log "Installation finished."
+Write-Log "install-rclone.ps1 completed." $LogFile
