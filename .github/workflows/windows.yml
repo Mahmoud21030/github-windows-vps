@@ -1,22 +1,20 @@
-name: Windows Workspace
+name: Windows Temporary Workstation
 
 on:
   workflow_dispatch:
 
-permissions:
-  contents: read
 
 jobs:
-  workspace:
+
+  workstation:
 
     runs-on: windows-2022
+
     timeout-minutes: 355
 
-    defaults:
-      run:
-        shell: powershell
 
     env:
+
       WORKSPACE: C:\Workspace
 
       OCI_USER_OCID: ${{ secrets.OCI_USER_OCID }}
@@ -28,108 +26,87 @@ jobs:
       OCI_REGION: ${{ secrets.OCI_REGION }}
       OCI_BUCKET: ${{ secrets.OCI_BUCKET }}
 
+
+
     steps:
 
-    - name: Checkout
+
+    - name: Checkout repository
+
       uses: actions/checkout@v4
 
-    - name: Create workspace
-      run: |
 
-        New-Item `
-            -ItemType Directory `
-            -Force `
-            -Path C:\Workspace | Out-Null
-
-        New-Item `
-            -ItemType Directory `
-            -Force `
-            -Path C:\Workspace\config | Out-Null
-
-        New-Item `
-            -ItemType Directory `
-            -Force `
-            -Path C:\Workspace\logs | Out-Null
-
-        New-Item `
-            -ItemType Directory `
-            -Force `
-            -Path C:\Tools | Out-Null
 
     - name: Install rclone
+
+      shell: powershell
+
       run: |
+
         .\scripts\install-rclone.ps1
 
-    - name: Verify rclone
-      run: |
 
-        if (!(Test-Path "C:\Tools\rclone\rclone.exe")) {
-
-            throw "rclone installation failed."
-        }
-
-        & "C:\Tools\rclone\rclone.exe" version
 
     - name: Configure OCI
+
+      shell: powershell
+
       run: |
+
         .\scripts\configure-oci.ps1
 
-    - name: Verify OCI
+
+
+    - name: Prepare workstation
+
+      shell: powershell
+
       run: |
 
-        & "C:\Tools\rclone\rclone.exe" `
-            listremotes `
-            --config C:\Workspace\config\rclone.conf
-
-    - name: Restore workspace
-      run: |
-        .\scripts\restore.ps1
-
-    - name: Start autosave
-      run: |
-
-        $job = Start-Job `
-            -ScriptBlock {
-
-                param($repo)
-
-                Set-Location $repo
-
-                powershell `
-                    -ExecutionPolicy Bypass `
-                    -File ".\scripts\autosave.ps1"
-
-            } `
-            -ArgumentList $PWD
-
-        $job.Id
-
-    - name: Install tools
-      run: |
         .\scripts\install.ps1
 
-    - name: Workspace ready
+
+
+    - name: Restore workspace
+
+      shell: powershell
+
       run: |
 
-        Write-Host ""
-        Write-Host "==================================="
-        Write-Host "Workspace:"
-        Write-Host "C:\Workspace"
-        Write-Host ""
-        Write-Host "Autosave running every 10 minutes."
-        Write-Host "==================================="
+        .\scripts\restore.ps1
 
-    #################################################################
-    # Put your own commands below.
-    #
-    # Everything inside C:\Workspace will be restored next run.
-    #################################################################
 
-    #- name: Example
-    #  run: |
-    #      Copy-Item something C:\Workspace
+
+    - name: Start autosave
+
+      shell: powershell
+
+      run: |
+
+        Start-Process powershell.exe `
+          -ArgumentList "-ExecutionPolicy Bypass -File .\scripts\autosave.ps1" `
+          -WindowStyle Hidden
+
+
+
+    - name: Work session
+
+      shell: powershell
+
+      run: |
+
+        Write-Host "Workspace ready."
+
+        Write-Host "Add your commands here."
+
+
 
     - name: Final backup
+
       if: always()
+
+      shell: powershell
+
       run: |
+
         .\scripts\finalize.ps1
