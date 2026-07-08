@@ -1,123 +1,102 @@
-$ErrorActionPreference = "Stop"
+# restore.ps1
 
 . "$PSScriptRoot\common.ps1"
 
-Write-Log "Starting restore." "restore.log"
+Start-Log "restore"
 
-# create folders
+$remote = Get-Remote
 
-$null = New-Item `
-    -ItemType Directory `
-    -Force `
-    -Path $Workspace
+Write-Log "Checking remote workspace."
 
-$null = New-Item `
-    -ItemType Directory `
-    -Force `
-    -Path $InstallerFolder
-
-$null = New-Item `
-    -ItemType Directory `
-    -Force `
-    -Path $InstalledFolder
-
-# ------------------------
-# restore workspace
-# ------------------------
-
+# first determine whether the remote exists
 try {
 
-    Write-Log "Checking workspace backup..." "restore.log"
+    Invoke-Rclone @(
+        "lsf",
+        $remote,
+        "--config",
+        $RcloneConfig,
+        "--max-depth",
+        "1"
+    )
 
-    Invoke-Retry {
-
-        Invoke-RcloneRestore `
-            -Remote (Get-WorkspaceRemote) `
-            -Local $Workspace
-
-    }
-
-    Write-Log "Workspace restored." "restore.log"
+    $remoteExists = $true
 
 }
 catch {
 
-    Write-Log "Workspace backup not found." "restore.log"
+    $remoteExists = $false
 
 }
 
-# ------------------------
-# restore installers
-# ------------------------
+if (-not $remoteExists) {
 
-try {
+    Write-Log "No previous backup found."
 
-    Write-Log "Checking installer backup..." "restore.log"
+    if (!(Test-Path $Workspace)) {
 
-    Invoke-Retry {
-
-        Invoke-RcloneRestore `
-            -Remote (Get-InstallerRemote) `
-            -Local $InstallerFolder
+        New-Item `
+            -ItemType Directory `
+            -Force `
+            -Path $Workspace | Out-Null
 
     }
 
-    Write-Log "Installers restored." "restore.log"
+    Write-Log "Created empty workspace."
 
-}
-catch {
-
-    Write-Log "Installer backup not found." "restore.log"
+    exit 0
 
 }
 
-# ------------------------
-# create state file
-# ------------------------
+Write-Log "Restoring workspace."
 
-$stateFile = Join-Path $Workspace ".installed"
+Invoke-Retry {
 
-if (!(Test-Path $stateFile)) {
-
-    New-Item `
-        -ItemType File `
-        -Path $stateFile `
-        -Force | Out-Null
-
-    Write-Log "Created .installed state file." "restore.log"
-
-}
-
-# ------------------------
-# create installer folder
-# ------------------------
-
-if (!(Test-Path $InstallerFolder)) {
-
-    New-Item `
-        -ItemType Directory `
-        -Force `
-        -Path $InstallerFolder | Out-Null
+    Invoke-Rclone @(
+        "sync",
+        $remote,
+        $Workspace,
+        "--config",
+        $RcloneConfig,
+        "--fast-list",
+        "--transfers",
+        "8",
+        "--checkers",
+        "8",
+        "--create-empty-src-dirs",
+        "--retries",
+        "5",
+        "--low-level-retries",
+        "10",
+        "--stats",
+        "30s"
+    )
 
 }
 
-# ------------------------
-# summary
-# ------------------------
+Write-Log "Verifying restored files."
 
-$installerCount = 0
+Invoke-Retry {
 
-if (Test-Path $InstallerFolder) {
+    & $RcloneExe `
+        check `
+        $remote `
+        $Workspace `
+        --config $RcloneConfig `
+        --one-way
 
-    $installerCount = (
-        Get-ChildItem `
-            $InstallerFolder `
-            -File `
-            -ErrorAction SilentlyContinue
-    ).Count
+    if ($LASTEXITCODE -gt 1) {
+
+        throw "Restore verification failed."
+
+    }
 
 }
 
-Write-Log "Installer count: $installerCount" "restore.log"
+$stats = Get-WorkspaceStats
 
-Write-Log "Restore completed." "restore.log"
+Write-Log "Restore completed."
+
+Write-Log "Files: $($stats.Files)"
+Write-Log "Directories: $($stats.Directories)"
+Write-Log "Size MB: $($stats.SizeMB)"

@@ -1,10 +1,8 @@
-$ErrorActionPreference = "Stop"
+# configure-oci.ps1
 
 . "$PSScriptRoot\common.ps1"
 
-$LogFile = "configure-oci.log"
-
-Write-Log "Starting OCI configuration." $LogFile
+Start-Log "configure-oci"
 
 function Require-Secret {
 
@@ -19,7 +17,7 @@ function Require-Secret {
 
 }
 
-Write-Log "Checking required secrets." $LogFile
+Write-Log "Checking required secrets."
 
 Require-Secret "OCI_USER_OCID" $env:OCI_USER_OCID
 Require-Secret "OCI_TENANCY_OCID" $env:OCI_TENANCY_OCID
@@ -30,36 +28,34 @@ Require-Secret "OCI_NAMESPACE" $env:OCI_NAMESPACE
 Require-Secret "OCI_REGION" $env:OCI_REGION
 Require-Secret "OCI_BUCKET" $env:OCI_BUCKET
 
-$configDir = Join-Path $Script:ConfigDir "oci"
-
-New-Item `
-    -ItemType Directory `
-    -Force `
-    -Path $configDir | Out-Null
-
-$OciKey = Join-Path $configDir "oci_private_key.pem"
-$OciConfig = Join-Path $configDir "oci_config"
-$RcloneConfig = Get-RcloneConfig
-
-Write-Log "Writing OCI private key." $LogFile
+Write-Log "Writing OCI private key."
 
 $key = $env:OCI_PRIVATE_KEY
-$key = $key.Replace("\r","")
+
 $key = $key.Replace("\n","`n")
+$key = $key.Replace("`r`n","`n")
 
 if (
     ($key -notmatch "BEGIN PRIVATE KEY") -and
     ($key -notmatch "BEGIN RSA PRIVATE KEY")
 ) {
-    throw "Invalid private key."
+    throw "Invalid private key header."
+}
+
+if (
+    ($key -notmatch "END PRIVATE KEY") -and
+    ($key -notmatch "END RSA PRIVATE KEY")
+) {
+    throw "Invalid private key footer."
 }
 
 Set-Content `
     -Path $OciKey `
     -Value $key `
-    -Encoding ascii
+    -Encoding ascii `
+    -NoNewline
 
-Write-Log "Creating OCI config." $LogFile
+Write-Log "Creating OCI configuration."
 
 @"
 [DEFAULT]
@@ -69,10 +65,10 @@ fingerprint=$($env:OCI_FINGERPRINT)
 region=$($env:OCI_REGION)
 key_file=$OciKey
 "@ | Set-Content `
-    -Path $OciConfig `
-    -Encoding ascii
+        -Path $OciConfig `
+        -Encoding ascii
 
-Write-Log "Creating rclone config." $LogFile
+Write-Log "Creating rclone configuration."
 
 @"
 [oci]
@@ -86,8 +82,10 @@ config_file = $OciConfig
 config_profile = DEFAULT
 compartment = $($env:OCI_COMPARTMENT_OCID)
 "@ | Set-Content `
-    -Path $RcloneConfig `
-    -Encoding ascii
+        -Path $RcloneConfig `
+        -Encoding ascii
+
+Write-Log "Checking generated files."
 
 foreach ($file in @($OciKey,$OciConfig,$RcloneConfig)) {
 
@@ -99,29 +97,21 @@ foreach ($file in @($OciKey,$OciConfig,$RcloneConfig)) {
 
 }
 
-$rclone = Get-Rclone
+Write-Log "Testing rclone configuration."
 
-Write-Log "Testing rclone configuration." $LogFile
+Invoke-Rclone @(
+    "listremotes",
+    "--config",
+    $RcloneConfig
+)
 
-& $rclone listremotes `
-    --config $RcloneConfig
+Write-Log "Testing bucket access."
 
-if ($LASTEXITCODE -ne 0) {
+Invoke-Rclone @(
+    "lsd",
+    "oci:$($env:OCI_BUCKET)",
+    "--config",
+    $RcloneConfig
+)
 
-    throw "Unable to load rclone configuration."
-
-}
-
-Write-Log "Testing Oracle bucket." $LogFile
-
-& $rclone lsd `
-    "oci:$($env:OCI_BUCKET)" `
-    --config $RcloneConfig
-
-if ($LASTEXITCODE -ne 0) {
-
-    throw "Unable to access OCI bucket."
-
-}
-
-Write-Log "OCI configuration completed successfully." $LogFile
+Write-Log "OCI configuration completed successfully."

@@ -1,240 +1,270 @@
+# common.ps1
+
 $ErrorActionPreference = "Stop"
 
-# ----------------------------
-# runtime folders
-# ----------------------------
+# ---------- paths ----------
 
-$Script:Workspace = if ($env:WORKSPACE) {
-    $env:WORKSPACE
+$Global:Workspace = "C:\Workspace"
+
+$Global:RuntimeDir = "C:\Runtime"
+
+$Global:ConfigDir = Join-Path $RuntimeDir "config"
+
+$Global:LogDir = Join-Path $RuntimeDir "logs"
+
+$Global:RcloneExe = "C:\Tools\rclone\rclone.exe"
+
+$Global:RcloneConfig = Join-Path $ConfigDir "rclone.conf"
+
+$Global:OciConfig = Join-Path $ConfigDir "oci_config"
+
+$Global:OciKey = Join-Path $ConfigDir "oci_private_key.pem"
+
+
+foreach ($dir in @(
+    $Workspace,
+    $RuntimeDir,
+    $ConfigDir,
+    $LogDir,
+    "C:\Tools",
+    "C:\Tools\rclone"
+)) {
+
+    if (!(Test-Path $dir)) {
+
+        New-Item `
+            -ItemType Directory `
+            -Force `
+            -Path $dir | Out-Null
+
+    }
+
 }
-else {
-    "C:\Workspace"
+
+
+
+# ---------- logging ----------
+
+function Start-Log {
+
+    param(
+        [Parameter(Mandatory)]
+        [string]$Name
+    )
+
+    $script:LogFile = Join-Path $LogDir "$Name.log"
+
+    if (!(Test-Path $script:LogFile)) {
+
+        New-Item `
+            -ItemType File `
+            -Force `
+            -Path $script:LogFile | Out-Null
+
+    }
+
 }
 
-$Script:Runtime = "C:\Runtime"
 
-$Script:LogDir = Join-Path $Script:Runtime "logs"
-$Script:ConfigDir = Join-Path $Script:Runtime "config"
-
-$null = New-Item -ItemType Directory -Force -Path $Script:Workspace
-$null = New-Item -ItemType Directory -Force -Path $Script:Runtime
-$null = New-Item -ItemType Directory -Force -Path $Script:LogDir
-$null = New-Item -ItemType Directory -Force -Path $Script:ConfigDir
-
-# installer folders
-
-$Script:InstallerFolder = Join-Path $Script:Workspace "Installers"
-$Script:InstalledFolder = Join-Path $Script:Workspace "Installed"
-
-$null = New-Item -ItemType Directory -Force -Path $Script:InstallerFolder
-$null = New-Item -ItemType Directory -Force -Path $Script:InstalledFolder
-
-# ----------------------------
-# log
-# ----------------------------
 
 function Write-Log {
 
     param(
-        [string]$Message,
-        [string]$File = "general.log"
+        [Parameter(Mandatory)]
+        [string]$Message
     )
-
-    $log = Join-Path $Script:LogDir $File
-
-    if (!(Test-Path (Split-Path $log))) {
-        New-Item `
-            -ItemType Directory `
-            -Force `
-            -Path (Split-Path $log) | Out-Null
-    }
 
     $time = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
 
-    Add-Content `
-        -Path $log `
-        -Value "[$time] $Message"
+    $line = "[$time] $Message"
 
-    Write-Host "[$time] $Message"
+    Write-Host $line
+
+    $folder = Split-Path $script:LogFile -Parent
+
+    if (!(Test-Path $folder)) {
+
+        New-Item `
+            -ItemType Directory `
+            -Force `
+            -Path $folder | Out-Null
+
+    }
+
+    Add-Content `
+        -Path $script:LogFile `
+        -Value $line
+
 }
 
-# ----------------------------
-# retry helper
-# ----------------------------
+
+
+# ---------- retry ----------
 
 function Invoke-Retry {
 
     param(
 
-        [scriptblock]$Action,
+        [Parameter(Mandatory)]
+        [scriptblock]$Script,
 
-        [int]$RetryCount = 5,
+        [int]$Retries = 5,
 
         [int]$DelaySeconds = 10
 
     )
 
-    for ($i = 1; $i -le $RetryCount; $i++) {
+    $last = $null
+
+    for ($i = 1; $i -le $Retries; $i++) {
 
         try {
 
             Write-Log "Attempt $i"
 
-            & $Action
+            & $Script
 
             return
 
         }
         catch {
 
+            $last = $_
+
             Write-Log $_.Exception.Message
 
-            if ($i -eq $RetryCount) {
+            if ($i -lt $Retries) {
 
-                throw
+                Start-Sleep -Seconds $DelaySeconds
 
             }
 
-            Start-Sleep $DelaySeconds
-
         }
 
     }
 
+    throw $last
+
 }
 
-# ----------------------------
-# rclone
-# ----------------------------
+
+
+# ---------- rclone ----------
 
 function Get-Rclone {
 
-    $cmd = Get-Command rclone.exe -ErrorAction SilentlyContinue
+    if (!(Test-Path $RcloneExe)) {
 
-    if ($cmd) {
-        return $cmd.Source
+        throw "rclone.exe not found at $RcloneExe"
+
     }
 
-    $possible = @(
+    return $RcloneExe
 
-        "C:\Tools\rclone\rclone.exe",
+}
 
-        "$env:USERPROFILE\rclone\rclone.exe",
 
-        "$Script:Runtime\rclone.exe"
+
+function Invoke-Rclone {
+
+    param(
+
+        [Parameter(Mandatory)]
+        [string[]]$Arguments
 
     )
 
-    foreach ($p in $possible) {
+    $exe = Get-Rclone
 
-        if (Test-Path $p) {
+    & $exe @Arguments
 
-            return $p
+    if ($LASTEXITCODE -ne 0) {
 
-        }
+        throw "rclone exited with code $LASTEXITCODE"
 
     }
 
-    throw "rclone.exe not found."
-
 }
 
-# ----------------------------
-# paths
-# ----------------------------
 
-function Get-RcloneConfig {
 
-    return Join-Path $Script:ConfigDir "rclone.conf"
+# ---------- remote ----------
 
-}
+function Get-Remote {
 
-function Get-WorkspaceRemote {
+    if ([string]::IsNullOrWhiteSpace($env:OCI_BUCKET)) {
+
+        throw "OCI_BUCKET is not set."
+
+    }
 
     return "oci:$($env:OCI_BUCKET)/workspace"
 
 }
 
-function Get-InstallerRemote {
 
-    return "oci:$($env:OCI_BUCKET)/installers"
 
-}
+# ---------- validation ----------
 
-# ----------------------------
-# sync upload
-# ----------------------------
+function Test-RcloneConfig {
 
-function Invoke-RcloneSync {
+    if (!(Test-Path $RcloneConfig)) {
 
-    param(
-
-        [string]$Source,
-
-        [string]$Destination
-
-    )
-
-    $rclone = Get-Rclone
-
-    $config = Get-RcloneConfig
-
-    & $rclone sync `
-        $Source `
-        $Destination `
-        --config $config `
-        --transfers 8 `
-        --checkers 8 `
-        --fast-list `
-        --links `
-        --create-empty-src-dirs `
-        --copy-links `
-        --retries 10 `
-        --low-level-retries 10 `
-        --log-level INFO
-
-    if ($LASTEXITCODE -ne 0) {
-
-        throw "rclone sync failed ($LASTEXITCODE)"
+        throw "Missing rclone configuration."
 
     }
 
-}
-
-# ----------------------------
-# sync download
-# ----------------------------
-
-function Invoke-RcloneRestore {
-
-    param(
-
-        [string]$Remote,
-
-        [string]$Local
-
+    Invoke-Rclone @(
+        "listremotes",
+        "--config",
+        $RcloneConfig
     )
 
-    $rclone = Get-Rclone
+}
 
-    $config = Get-RcloneConfig
 
-    & $rclone sync `
-        $Remote `
-        $Local `
-        --config $config `
-        --transfers 8 `
-        --checkers 8 `
-        --fast-list `
-        --links `
-        --copy-links `
-        --retries 10 `
-        --low-level-retries 10 `
-        --log-level INFO
 
-    if ($LASTEXITCODE -ne 0) {
+# ---------- workspace stats ----------
 
-        throw "rclone restore failed ($LASTEXITCODE)"
+function Get-WorkspaceStats {
+
+    if (!(Test-Path $Workspace)) {
+
+        return [PSCustomObject]@{
+            Files = 0
+            Directories = 0
+            SizeMB = 0
+        }
+
+    }
+
+    $files = Get-ChildItem `
+        $Workspace `
+        -File `
+        -Recurse `
+        -ErrorAction SilentlyContinue
+
+    $dirs = Get-ChildItem `
+        $Workspace `
+        -Directory `
+        -Recurse `
+        -ErrorAction SilentlyContinue
+
+    $size = ($files | Measure-Object Length -Sum).Sum
+
+    if ($null -eq $size) {
+
+        $size = 0
+
+    }
+
+    return [PSCustomObject]@{
+
+        Files = $files.Count
+
+        Directories = $dirs.Count
+
+        SizeMB = [Math]::Round($size / 1MB, 2)
 
     }
 

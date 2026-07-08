@@ -2,7 +2,7 @@
 
 . "$PSScriptRoot\common.ps1"
 
-Write-Log "Finalize started."
+Start-Log "finalize"
 
 
 $backupScript = Join-Path $PSScriptRoot "backup.ps1"
@@ -40,9 +40,7 @@ try {
     Write-Log "Running final verification."
 
 
-    $remote = Get-WorkspaceRemote
-    $RcloneExe = Get-Rclone
-    $RcloneConfig = Get-RcloneConfig
+    $remote = Get-Remote
 
 
 
@@ -69,7 +67,7 @@ try {
 
 
 
-    $stats = [pscustomobject]@{Files=(Get-ChildItem $Workspace -Recurse -File|Measure).Count;Directories=(Get-ChildItem $Workspace -Recurse -Directory|Measure).Count;SizeMB=[math]::Round(((Get-ChildItem $Workspace -Recurse -File|Measure Length -Sum).Sum/1MB),2)}
+    $stats = Get-WorkspaceStats
 
 
     Write-Log "Final backup completed."

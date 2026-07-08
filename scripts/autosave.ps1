@@ -2,7 +2,7 @@
 
 . "$PSScriptRoot\common.ps1"
 
-Write-Log "Autosave started."
+Start-Log "autosave"
 
 
 $backupScript = Join-Path $PSScriptRoot "backup.ps1"

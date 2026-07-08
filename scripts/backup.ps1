@@ -1,78 +1,187 @@
-$ErrorActionPreference = "Stop"
+# backup.ps1
 
 . "$PSScriptRoot\common.ps1"
 
-Write-Log "Starting workspace backup." "backup.log"
+Start-Log "backup"
 
-# ------------------------
-# workspace backup
-# ------------------------
+$remote = Get-Remote
 
-Invoke-Retry {
+Write-Log "Starting workspace backup."
 
-    Write-Log "Uploading workspace..." "backup.log"
+if (!(Test-Path $Workspace)) {
 
-    Invoke-RcloneSync `
-        -Source $Workspace `
-        -Destination (Get-WorkspaceRemote)
+    throw "Workspace directory does not exist."
 
 }
 
-# ------------------------
-# installer backup
-# ------------------------
 
 Invoke-Retry {
 
-    Write-Log "Uploading installers..." "backup.log"
+    Write-Log "Running incremental sync."
 
-    Invoke-RcloneSync `
-        -Source $InstallerFolder `
-        -Destination (Get-InstallerRemote)
+
+    Invoke-Rclone @(
+        "sync",
+        $Workspace,
+        $remote,
+        "--config",
+        $RcloneConfig,
+
+        # keep runtime data and secrets out of object storage
+        "--exclude",
+        "config/**",
+
+        "--exclude",
+        "logs/**",
+
+        "--exclude",
+        "*.pem",
+
+        "--exclude",
+        "*.key",
+
+        "--fast-list",
+
+        "--transfers",
+        "8",
+
+        "--checkers",
+        "8",
+
+        "--track-renames",
+
+        "--create-empty-src-dirs",
+
+        "--retries",
+        "5",
+
+        "--low-level-retries",
+        "10",
+
+        "--retries-sleep",
+        "10s",
+
+        "--stats",
+        "30s"
+    )
 
 }
 
-# ------------------------
-# upload state file
-# ------------------------
 
-$state = Join-Path $Workspace ".installed"
+Write-Log "Backup sync completed."
 
-if (Test-Path $state) {
 
-    Invoke-Retry {
+Write-Log "Checking remote upload."
 
-        $rclone = Get-Rclone
 
-        & $rclone copy `
-            $state `
-            (Get-WorkspaceRemote) `
-            --config (Get-RcloneConfig) `
-            --retries 10 `
-            --low-level-retries 10 `
-            --log-level INFO
+Invoke-Retry {
 
-        if ($LASTEXITCODE -ne 0) {
+    & $RcloneExe `
+        check `
+        $Workspace `
+        $remote `
+        --config $RcloneConfig `
+        --one-way
 
-            throw "Failed to upload .installed"
 
-        }
+    if ($LASTEXITCODE -gt 1) {
+
+        throw "Backup verification failed."
 
     }
 
 }
 
-# ------------------------
-# summary
-# ------------------------
 
-$installerCount = (
-    Get-ChildItem `
-        $InstallerFolder `
-        -File `
-        -ErrorAction SilentlyContinue
-).Count
+$stats = Get-WorkspaceStats
 
-Write-Log "Installer count: $installerCount" "backup.log"
 
-Write-Log "Backup completed successfully." "backup.log"
+Write-Log "Backup completed successfully."
+
+Write-Log "Files: $($stats.Files)"
+
+Write-Log "Directories: $($stats.Directories)"
+
+Write-Log "Size MB: $($stats.SizeMB)"
+Invoke-Retry {
+
+    Invoke-Rclone @(
+
+        "sync",
+
+        $Workspace,
+
+        $remote,
+
+        "--config",
+
+        $RcloneConfig,
+
+        "--exclude",
+
+        "config/**",
+
+        "--exclude",
+
+        "logs/**",
+
+        "--fast-list",
+
+        "--transfers",
+
+        "8",
+
+        "--checkers",
+
+        "8",
+
+        "--retries",
+
+        "5",
+
+        "--retries-sleep",
+
+        "10s"
+
+    )
+
+}
+
+
+Write-Log "Backup complete."
+
+
+
+Write-Log "Verifying remote files."
+
+
+
+Invoke-Retry {
+
+    & $RcloneExe `
+        check `
+        $Workspace `
+        $remote `
+        --config $RcloneConfig `
+        --one-way
+
+
+    if ($LASTEXITCODE -gt 1) {
+
+        throw "Backup verification failed."
+    }
+
+}
+
+
+
+$stats = Get-WorkspaceStats
+
+
+Write-Log "Backup completed successfully."
+
+Write-Log "Files: $($stats.Files)"
+
+Write-Log "Directories: $($stats.Directories)"
+
+Write-Log "Size MB: $($stats.SizeMB)"

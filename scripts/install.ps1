@@ -1,14 +1,12 @@
 # install.ps1
 
-$ErrorActionPreference = "Stop"
-
 . "$PSScriptRoot\common.ps1"
 
-$LogFile = "install.log"
+Start-Log "install"
 
-Write-Log "Starting workspace preparation." $LogFile
 
-# create workspace
+Write-Log "Starting workspace preparation."
+
 
 if (!(Test-Path $Workspace)) {
 
@@ -17,11 +15,11 @@ if (!(Test-Path $Workspace)) {
         -Force `
         -Path $Workspace | Out-Null
 
-    Write-Log "Created workspace directory." $LogFile
+    Write-Log "Created workspace directory."
 
 }
 
-# create folders
+
 
 $folders = @(
 
@@ -29,60 +27,46 @@ $folders = @(
 
     "Downloads",
 
-    "Projects",
-
-    "Installers",
-
-    "Installed",
-
-    "config"
+    "Projects"
 
 )
 
+
+
 foreach ($folder in $folders) {
+
 
     $path = Join-Path $Workspace $folder
 
+
     if (!(Test-Path $path)) {
+
 
         New-Item `
             -ItemType Directory `
             -Force `
             -Path $path | Out-Null
 
-        Write-Log "Created folder: $path" $LogFile
+
+        Write-Log "Created: $path"
 
     }
 
 }
 
-# create installer state file
 
-$stateFile = Join-Path $Workspace ".installed"
 
-if (!(Test-Path $stateFile)) {
+Write-Log "Checking Windows environment."
 
-    New-Item `
-        -ItemType File `
-        -Path $stateFile `
-        -Force | Out-Null
 
-    Write-Log "Created installer state file." $LogFile
+$os = Get-CimInstance `
+    Win32_OperatingSystem
 
-}
 
-Write-Log "Checking Windows environment." $LogFile
+Write-Log "OS: $($os.Caption)"
 
-$os = Get-CimInstance Win32_OperatingSystem
+Write-Log "PowerShell: $($PSVersionTable.PSVersion)"
 
-Write-Log "OS: $($os.Caption)" $LogFile
 
-Write-Log "Version: $($os.Version)" $LogFile
 
-Write-Log "PowerShell: $($PSVersionTable.PSVersion)" $LogFile
-
-Write-Log "Workspace: $Workspace" $LogFile
-
-Write-Log "Runtime: $Runtime" $LogFile
-
-Write-Log "Workspace preparation completed." $LogFile
+Write-Log "Workspace preparation completed."
