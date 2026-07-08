@@ -150,36 +150,30 @@ jobs:
 
         $folder = "C:\Tools\Tailscale"
 
-
-        New-Item `
-          -ItemType Directory `
-          -Force `
-          -Path $folder | Out-Null
-
-
-
+        New-Item -ItemType Directory -Force -Path $folder | Out-Null
+        
         Invoke-WebRequest `
           -Uri "https://pkgs.tailscale.com/stable/tailscale-setup-1.98.8-arm64.msi" `
-          -OutFile "$folder\tailscale-setup.exe"
-
-
-
-        Start-Process `
-          -FilePath "$folder\tailscale-setup.exe" `
-          -ArgumentList "/quiet" `
+          -OutFile "$folder\tailscale.msi"
+        
+        
+        Start-Process msiexec.exe `
+          -ArgumentList "/i $folder\tailscale.msi /quiet" `
           -Wait
-
-
-
-        Start-Sleep -Seconds 10
-
-
-
-        if (!(Test-Path "C:\Program Files\Tailscale\tailscale.exe")) {
-
-          throw "Tailscale installation failed."
-
+        
+        
+        Start-Sleep -Seconds 15
+        
+        
+        $service = Get-Service Tailscale
+        
+        if ($service.Status -ne "Running") {
+            Start-Service Tailscale
+            Start-Sleep -Seconds 10
         }
+        
+        
+        & "C:\Program Files\Tailscale\tailscale.exe" status
 
 
 
