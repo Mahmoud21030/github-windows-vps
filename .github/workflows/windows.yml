@@ -153,85 +153,69 @@ jobs:
 
 
 
-    - name: Install Pinggy Tunnel
 
-      shell: powershell
-
-      run: |
-
-
-        Write-Host "Installing SSH client"
-
-
-        ssh -V
-
-
-
-
-    - name: Start Pinggy RDP Tunnel
+    - name: Start Serveo RDP Tunnel
       shell: powershell
       run: |
 
         Write-Host "================================"
-        Write-Host "Starting Pinggy TCP tunnel"
+        Write-Host "Starting Serveo SSH RDP Tunnel"
         Write-Host "================================"
 
 
-        Remove-Item C:\pinggy.log -Force -ErrorAction SilentlyContinue
+        Remove-Item C:\serveo.log `
+          -Force `
+          -ErrorAction SilentlyContinue
 
 
-        $args = @(
-          "-o",
-          "StrictHostKeyChecking=no",
-          "-o",
-          "ServerAliveInterval=30",
-          "-o",
-          "ExitOnForwardFailure=yes",
-          "-p",
-          "443",
-          "-R",
-          "0:localhost:3389",
-          "tcp@free.pinggy.io"
-        )
+        Remove-Item C:\serveo-error.log `
+          -Force `
+          -ErrorAction SilentlyContinue
 
 
-        Write-Host "Starting SSH..."
 
         Start-Process `
           -FilePath "ssh.exe" `
-          -ArgumentList $args `
-          -RedirectStandardOutput C:\pinggy.log `
-          -RedirectStandardError C:\pinggy-error.log `
+          -ArgumentList @(
+              "-o",
+              "StrictHostKeyChecking=no",
+              "-o",
+              "ServerAliveInterval=30",
+              "-R",
+              "0:localhost:3389",
+              "serveo.net"
+          ) `
+          -RedirectStandardOutput C:\serveo.log `
+          -RedirectStandardError C:\serveo-error.log `
           -WindowStyle Hidden
 
 
 
-        Start-Sleep -Seconds 20
+        Start-Sleep -Seconds 30
 
 
 
         Write-Host ""
-        Write-Host "========== OUTPUT =========="
+        Write-Host "========== SERVEO OUTPUT =========="
 
-        if (Test-Path C:\pinggy.log) {
-            Get-Content C:\pinggy.log
+
+        if (Test-Path C:\serveo.log) {
+
+            Get-Content C:\serveo.log
+
         }
 
 
 
         Write-Host ""
-        Write-Host "========== ERROR =========="
+        Write-Host "========== SERVEO ERROR =========="
 
-        if (Test-Path C:\pinggy-error.log) {
-            Get-Content C:\pinggy-error.log
+
+        if (Test-Path C:\serveo-error.log) {
+
+            Get-Content C:\serveo-error.log
+
         }
-
-
-
-        Write-Host ""
-        Write-Host "Running SSH processes:"
-        Get-Process ssh -ErrorAction SilentlyContinue
-
 
     - name: Start Autosave
 
