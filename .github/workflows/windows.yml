@@ -199,16 +199,15 @@ jobs:
           -ErrorAction SilentlyContinue
 
 
-
         $ssh = @"
         ssh.exe -tt ^
-        -o StrictHostKeyChecking=no ^
-        -o ServerAliveInterval=30 ^
-        -o ServerAliveCountMax=3 ^
-        -o ExitOnForwardFailure=yes ^
+        # -o StrictHostKeyChecking=no ^
+        # -o ServerAliveInterval=30 ^
+        # -o ServerAliveCountMax=3 ^
+        # -o ExitOnForwardFailure=yes ^
         -p 443 ^
         -R0:localhost:3389 ^
-        a.pinggy.io
+        tcp@free.pinggy.io
         "@
 
 
