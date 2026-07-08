@@ -1,7 +1,6 @@
 name: Windows Temporary Workstation
 
 on:
-
   workflow_dispatch:
 
 
@@ -40,7 +39,6 @@ jobs:
     - name: Install rclone
       shell: powershell
       run: |
-
         .\scripts\install-rclone.ps1
 
 
@@ -48,7 +46,6 @@ jobs:
     - name: Configure OCI
       shell: powershell
       run: |
-
         .\scripts\configure-oci.ps1
 
 
@@ -56,7 +53,6 @@ jobs:
     - name: Prepare workspace
       shell: powershell
       run: |
-
         .\scripts\install.ps1
 
 
@@ -64,9 +60,248 @@ jobs:
     - name: Restore workspace
       shell: powershell
       run: |
-
         .\scripts\restore.ps1
 
 
 
-   
+    - name: Enable RDP
+      shell: powershell
+      run: |
+
+        Write-Host "Enabling RDP"
+
+
+        Set-ItemProperty `
+          -Path "HKLM:\System\CurrentControlSet\Control\Terminal Server" `
+          -Name "fDenyTSConnections" `
+          -Value 0
+
+
+        Enable-NetFirewallRule `
+          -DisplayGroup "Remote Desktop"
+
+
+        Set-Service `
+          -Name TermService `
+          -StartupType Automatic
+
+
+        Restart-Service TermService
+
+
+
+    - name: Create RDP User
+
+      shell: powershell
+
+      env:
+
+        RDP_USERNAME: ${{ secrets.RDP_USERNAME }}
+        RDP_PASSWORD: ${{ secrets.RDP_PASSWORD }}
+
+
+      run: |
+
+        Write-Host "Creating RDP user"
+
+
+        $password = ConvertTo-SecureString `
+          $env:RDP_PASSWORD `
+          -AsPlainText `
+          -Force
+
+
+
+        if (Get-LocalUser `
+            -Name $env:RDP_USERNAME `
+            -ErrorAction SilentlyContinue) {
+
+
+            Remove-LocalUser `
+              -Name $env:RDP_USERNAME
+
+        }
+
+
+
+        New-LocalUser `
+          -Name $env:RDP_USERNAME `
+          -Password $password `
+          -AccountNeverExpires
+
+
+
+        Add-LocalGroupMember `
+          -Group Administrators `
+          -Member $env:RDP_USERNAME
+
+
+
+
+    - name: Verify RDP
+
+      shell: powershell
+
+      run: |
+
+
+        Get-Service TermService
+
+
+        netstat -ano | findstr :3389
+
+
+
+
+    - name: Install Pinggy Tunnel
+
+      shell: powershell
+
+      run: |
+
+
+        Write-Host "Installing SSH client"
+
+
+        ssh -V
+
+
+
+
+    - name: Start Pinggy RDP Tunnel
+
+      shell: powershell
+
+      run: |
+
+
+        Write-Host "================================"
+        Write-Host "Starting Pinggy SSH RDP Tunnel"
+        Write-Host "================================"
+
+
+
+        $logFile = "C:\pinggy.log"
+
+        $errorFile = "C:\pinggy-error.log"
+
+        $cmdFile = "C:\pinggy-start.cmd"
+
+
+
+        Remove-Item $logFile `
+          -Force `
+          -ErrorAction SilentlyContinue
+
+
+        Remove-Item $errorFile `
+          -Force `
+          -ErrorAction SilentlyContinue
+
+
+
+        $ssh = @"
+        ssh.exe -tt ^
+        -o StrictHostKeyChecking=no ^
+        -o ServerAliveInterval=30 ^
+        -o ServerAliveCountMax=3 ^
+        -o ExitOnForwardFailure=yes ^
+        -p 443 ^
+        -R0:localhost:3389 ^
+        a.pinggy.io
+        "@
+
+
+
+        Set-Content `
+          -Path $cmdFile `
+          -Value $ssh
+
+
+
+        Start-Process `
+          -FilePath cmd.exe `
+          -ArgumentList "/c $cmdFile > $logFile 2> $errorFile" `
+          -WindowStyle Hidden
+
+
+
+        Write-Host "Waiting for Pinggy..."
+
+        Start-Sleep -Seconds 45
+
+
+
+        Write-Host ""
+        Write-Host "========== PINGGY OUTPUT =========="
+
+
+        if (Test-Path $logFile) {
+
+            Get-Content $logFile
+
+        }
+
+
+
+        Write-Host ""
+        Write-Host "========== PINGGY ERROR =========="
+
+
+        if (Test-Path $errorFile) {
+
+            Get-Content $errorFile
+
+        }
+
+
+
+    - name: Start Autosave
+
+      shell: powershell
+
+      run: |
+
+
+        Start-Process powershell.exe `
+          -ArgumentList "-ExecutionPolicy Bypass -File .\scripts\autosave.ps1" `
+          -WindowStyle Hidden
+
+
+
+
+
+    - name: Work Session
+
+      shell: powershell
+
+      run: |
+
+
+        Write-Host ""
+        Write-Host "===================================="
+        Write-Host "WINDOWS WORKSTATION READY"
+        Write-Host "Use Pinggy RDP address from logs"
+        Write-Host "===================================="
+
+
+
+        while ($true) {
+
+            Start-Sleep -Seconds 300
+
+        }
+
+
+
+
+
+    - name: Final Backup
+
+      if: always()
+
+      shell: powershell
+
+      run: |
+
+        .\scripts\finalize.ps1
