@@ -1,74 +1,56 @@
 # restore.ps1
-# restores workspace from oracle object storage
 
 . "$PSScriptRoot\common.ps1"
 
 Start-Log "restore"
 
-
 $remote = Get-Remote
 
+Write-Log "Checking remote workspace."
 
-Write-Log "Starting workspace restore."
+# first determine whether the remote exists
+try {
 
+    Invoke-Rclone @(
+        "lsf",
+        $remote,
+        "--config",
+        $RcloneConfig,
+        "--max-depth",
+        "1"
+    )
 
+    $remoteExists = $true
 
-function Test-RemoteExists {
+}
+catch {
 
-    try {
+    $remoteExists = $false
 
-        $result = & $RcloneExe `
-            lsf `
-            $remote `
-            --config $RcloneConfig `
-            --max-depth 1
-
-        if ($LASTEXITCODE -ne 0) {
-
-            throw "Remote check failed."
-        }
-
-
-        return $true
-
-    }
-    catch {
-
-        return $false
-    }
 }
 
+if (-not $remoteExists) {
 
+    Write-Log "No previous backup found."
 
-$hasBackup = Test-RemoteExists
+    if (!(Test-Path $Workspace)) {
 
+        New-Item `
+            -ItemType Directory `
+            -Force `
+            -Path $Workspace | Out-Null
 
-
-if (-not $hasBackup) {
-
-    Write-Log "No previous workspace backup found."
-
-    New-Item `
-        -ItemType Directory `
-        -Force `
-        -Path $Workspace | Out-Null
-
+    }
 
     Write-Log "Created empty workspace."
 
     exit 0
+
 }
 
-
-
-Write-Log "Existing backup detected."
-
-
+Write-Log "Restoring workspace."
 
 Invoke-Retry {
-
-    Write-Log "Downloading workspace."
-
 
     Invoke-Rclone @(
         "sync",
@@ -76,16 +58,14 @@ Invoke-Retry {
         $Workspace,
         "--config",
         $RcloneConfig,
-        "--create-empty-src-dirs",
         "--fast-list",
         "--transfers",
         "8",
         "--checkers",
         "8",
+        "--create-empty-src-dirs",
         "--retries",
         "5",
-        "--retries-sleep",
-        "10s",
         "--low-level-retries",
         "10",
         "--stats",
@@ -94,11 +74,7 @@ Invoke-Retry {
 
 }
 
-
-
-Write-Log "Checking restored files."
-
-
+Write-Log "Verifying restored files."
 
 Invoke-Retry {
 
@@ -109,23 +85,18 @@ Invoke-Retry {
         --config $RcloneConfig `
         --one-way
 
-
     if ($LASTEXITCODE -gt 1) {
 
         throw "Restore verification failed."
+
     }
 
 }
 
-
-
 $stats = Get-WorkspaceStats
-
 
 Write-Log "Restore completed."
 
 Write-Log "Files: $($stats.Files)"
-
 Write-Log "Directories: $($stats.Directories)"
-
 Write-Log "Size MB: $($stats.SizeMB)"
