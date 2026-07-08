@@ -1,6 +1,7 @@
 name: Windows Temporary Workstation
 
 on:
+
   workflow_dispatch:
 
 
@@ -57,7 +58,7 @@ jobs:
 
 
 
-    - name: Prepare workstation
+    - name: Prepare workspace
 
       shell: powershell
 
@@ -77,21 +78,14 @@ jobs:
 
 
 
-    - name: Start autosave
-
-      shell: powershell
-
-      run: |
-
-        Start-Process powershell.exe `
-          -ArgumentList "-ExecutionPolicy Bypass -File .\scripts\autosave.ps1" `
-          -WindowStyle Hidden
-          
     - name: Enable RDP
+
       shell: powershell
+
       run: |
 
         Write-Host "Enabling Remote Desktop."
+
 
         Set-ItemProperty `
           -Path "HKLM:\System\CurrentControlSet\Control\Terminal Server" `
@@ -105,7 +99,9 @@ jobs:
 
 
     - name: Create RDP user
+
       shell: powershell
+
       env:
 
         RDP_USERNAME: ${{ secrets.RDP_USERNAME }}
@@ -125,8 +121,8 @@ jobs:
 
         if (Get-LocalUser -Name $env:RDP_USERNAME -ErrorAction SilentlyContinue) {
 
-            Remove-LocalUser `
-              -Name $env:RDP_USERNAME
+          Remove-LocalUser `
+            -Name $env:RDP_USERNAME
 
         }
 
@@ -143,56 +139,65 @@ jobs:
 
 
 
-    - name: Install cloudflared
+    - name: Install Tailscale
+
       shell: powershell
+
       run: |
 
-        Write-Host "Downloading cloudflared."
+        Write-Host "Installing Tailscale."
 
 
-        $url = "https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-windows-amd64.exe"
-
-
-        New-Item `
-          -ItemType Directory `
-          -Force `
-          -Path "C:\Tools\cloudflared" | Out-Null
-
-
-        Invoke-WebRequest `
-          -Uri $url `
-          -OutFile "C:\Tools\cloudflared\cloudflared.exe"
+        winget install `
+          --id Tailscale.Tailscale `
+          --silent `
+          --accept-package-agreements `
+          --accept-source-agreements
 
 
 
-    - name: Start Cloudflare RDP tunnel
+    - name: Connect Tailscale
+
       shell: powershell
+
       env:
 
-        CLOUDFLARE_TUNNEL_TOKEN: ${{ secrets.CLOUDFLARE_TUNNEL_TOKEN }}
+        TAILSCALE_AUTH_KEY: ${{ secrets.TAILSCALE_AUTH_KEY }}
 
       run: |
 
-        Write-Host "Starting Cloudflare tunnel."
+        Write-Host "Connecting Tailscale."
 
 
-        Start-Process `
-          -FilePath "C:\Tools\cloudflared\cloudflared.exe" `
-          -ArgumentList @(
-              "tunnel",
-              "--no-autoupdate",
-              "run",
-              "--token",
-              $env:CLOUDFLARE_TUNNEL_TOKEN
-          ) `
+        & "C:\Program Files\Tailscale\tailscale.exe" up `
+          --authkey=$env:TAILSCALE_AUTH_KEY `
+          --hostname github-windows-runner
+
+
+
+    - name: Show connection information
+
+      shell: powershell
+
+      run: |
+
+        Write-Host "Tailscale address:"
+
+
+        & "C:\Program Files\Tailscale\tailscale.exe" ip
+
+
+
+    - name: Start autosave
+
+      shell: powershell
+
+      run: |
+
+        Start-Process powershell.exe `
+          -ArgumentList "-ExecutionPolicy Bypass -File .\scripts\autosave.ps1" `
           -WindowStyle Hidden
 
-
-
-        Start-Sleep -Seconds 15
-
-
-        Write-Host "Cloudflare tunnel started."
 
 
     - name: Work session
@@ -201,9 +206,19 @@ jobs:
 
       run: |
 
-        Write-Host "Workspace ready."
+        Write-Host "Windows workstation ready."
 
-        Write-Host "Add your commands here."
+        Write-Host "Connect using the Tailscale IP with Remote Desktop."
+
+        Write-Host "Waiting for session."
+
+
+        while ($true) {
+
+          Start-Sleep `
+            -Seconds 300
+
+        }
 
 
 
