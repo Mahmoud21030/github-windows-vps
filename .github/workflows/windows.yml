@@ -9,7 +9,7 @@ jobs:
 
   workstation:
 
-    runs-on: windows-2022
+    runs-on: windows-11-vs2026-arm
 
     timeout-minutes: 355
 
