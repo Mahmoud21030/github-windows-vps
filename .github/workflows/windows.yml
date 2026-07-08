@@ -86,7 +86,7 @@ jobs:
           -StartupType Automatic
 
 
-        Restart-Service TermService
+        # Restart-Service TermService
 
 
 
