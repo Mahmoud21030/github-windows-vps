@@ -148,15 +148,46 @@ jobs:
         Write-Host "Installing Tailscale."
 
 
-        winget install `
-          --id Tailscale.Tailscale `
-          --silent `
-          --accept-package-agreements `
-          --accept-source-agreements
+        $folder = "C:\Tools\Tailscale"
+
+
+        New-Item `
+          -ItemType Directory `
+          -Force `
+          -Path $folder | Out-Null
 
 
 
-    - name: Connect Tailscale
+        Invoke-WebRequest `
+          -Uri "https://pkgs.tailscale.com/stable/tailscale-setup-latest.exe" `
+          -OutFile "$folder\tailscale-setup.exe"
+
+
+
+        Start-Process `
+          -FilePath "$folder\tailscale-setup.exe" `
+          -ArgumentList "/quiet" `
+          -Wait
+
+
+
+        Start-Sleep -Seconds 10
+
+
+
+        if (!(Test-Path "C:\Program Files\Tailscale\tailscale.exe")) {
+
+          throw "Tailscale installation failed."
+
+        }
+
+
+
+        Write-Host "Tailscale installed."
+
+
+
+    - name="Connect Tailscale"
 
       shell: powershell
 
@@ -169,22 +200,35 @@ jobs:
         Write-Host "Connecting Tailscale."
 
 
-        & "C:\Program Files\Tailscale\tailscale.exe" up `
+        $tailscale = "C:\Program Files\Tailscale\tailscale.exe"
+
+
+        if (!(Test-Path $tailscale)) {
+
+          throw "tailscale.exe not found."
+
+        }
+
+
+        & $tailscale up `
           --authkey=$env:TAILSCALE_AUTH_KEY `
           --hostname github-windows-runner
 
 
 
-    - name: Show connection information
+    - name: Show Tailscale IP
 
       shell: powershell
 
       run: |
 
-        Write-Host "Tailscale address:"
+        $tailscale = "C:\Program Files\Tailscale\tailscale.exe"
 
 
-        & "C:\Program Files\Tailscale\tailscale.exe" ip
+        Write-Host "RDP address:"
+
+
+        & $tailscale ip
 
 
 
@@ -206,11 +250,9 @@ jobs:
 
       run: |
 
-        Write-Host "Windows workstation ready."
+        Write-Host "Windows workstation is ready."
 
-        Write-Host "Connect using the Tailscale IP with Remote Desktop."
-
-        Write-Host "Waiting for session."
+        Write-Host "Connect using the Tailscale IP."
 
 
         while ($true) {
