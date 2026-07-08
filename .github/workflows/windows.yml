@@ -1,9 +1,7 @@
 name: Windows Temporary Workstation
 
 on:
-
   workflow_dispatch:
-
 
 jobs:
 
@@ -12,7 +10,6 @@ jobs:
     runs-on: windows-11-arm
 
     timeout-minutes: 355
-
 
     env:
 
@@ -28,63 +25,47 @@ jobs:
       OCI_BUCKET: ${{ secrets.OCI_BUCKET }}
 
 
-
     steps:
 
 
     - name: Checkout repository
-
       uses: actions/checkout@v4
 
 
 
     - name: Install rclone
-
       shell: powershell
-
       run: |
-
         .\scripts\install-rclone.ps1
 
 
 
     - name: Configure OCI
-
       shell: powershell
-
       run: |
-
         .\scripts\configure-oci.ps1
 
 
 
     - name: Prepare workspace
-
       shell: powershell
-
       run: |
-
         .\scripts\install.ps1
 
 
 
     - name: Restore workspace
-
       shell: powershell
-
       run: |
-
         .\scripts\restore.ps1
 
 
 
     - name: Enable RDP
-
       shell: powershell
-
       run: |
 
-        Write-Host "Enabling Remote Desktop."
+        Write-Host "Enabling Remote Desktop"
 
 
         Set-ItemProperty `
@@ -99,18 +80,16 @@ jobs:
 
 
     - name: Create RDP user
-
       shell: powershell
 
       env:
 
         RDP_USERNAME: ${{ secrets.RDP_USERNAME }}
-
         RDP_PASSWORD: ${{ secrets.RDP_PASSWORD }}
 
       run: |
 
-        Write-Host "Creating RDP user."
+        Write-Host "Creating RDP user"
 
 
         $password = ConvertTo-SecureString `
@@ -121,8 +100,8 @@ jobs:
 
         if (Get-LocalUser -Name $env:RDP_USERNAME -ErrorAction SilentlyContinue) {
 
-          Remove-LocalUser `
-            -Name $env:RDP_USERNAME
+            Remove-LocalUser `
+              -Name $env:RDP_USERNAME
 
         }
 
@@ -139,136 +118,65 @@ jobs:
 
 
 
-    - name: Install Tailscale
 
+
+    - name: Install OpenSSH Client
       shell: powershell
-
       run: |
 
-        Write-Host "Installing Tailscale."
+        Write-Host "Checking SSH"
 
-
-        $folder = "C:\Tools\Tailscale"
-
-        New-Item -ItemType Directory -Force -Path $folder | Out-Null
-        
-        Invoke-WebRequest `
-          -Uri "https://pkgs.tailscale.com/stable/tailscale-setup-1.98.8-arm64.msi" `
-          -OutFile "$folder\tailscale.msi"
-        
-        
-        Start-Process msiexec.exe `
-          -ArgumentList "/i $folder\tailscale.msi /quiet" `
-          -Wait
-        
-        
-        Start-Sleep -Seconds 15
-        
-        
-        $service = Get-Service Tailscale
-        
-        if ($service.Status -ne "Running") {
-            Start-Service Tailscale
-            Start-Sleep -Seconds 10
-        }
-        
-        
-        & "C:\Program Files\Tailscale\tailscale.exe" status
+        ssh -V
 
 
 
-        Write-Host "Tailscale installed."
 
 
-
-    - name: Connect Tailscale
+    - name: Start Pinggy RDP Tunnel
       shell: powershell
-      env:
-        TAILSCALE_AUTH_KEY: ${{ secrets.TAILSCALE_AUTH_KEY }}
-
       run: |
 
-        $tailscale = "C:\Program Files\Tailscale\tailscale.exe"
 
-        Write-Host "Checking Tailscale service..."
-
-        $service = Get-Service -Name "Tailscale" -ErrorAction SilentlyContinue
-
-        if ($null -eq $service) {
-            throw "Tailscale service not installed."
-        }
+        Write-Host "Starting Pinggy tunnel"
 
 
-        if ($service.Status -ne "Running") {
-
-            Start-Service Tailscale
-
-            Start-Sleep -Seconds 15
-
-        }
-
-
-        Write-Host "Starting Tailscale login..."
+        Start-Process `
+          -FilePath "ssh.exe" `
+          -ArgumentList "-o StrictHostKeyChecking=no -o ServerAliveInterval=30 -p 443 -R0:localhost:3389 a.pinggy.io" `
+          -RedirectStandardOutput "C:\pinggy.log" `
+          -RedirectStandardError "C:\pinggy-error.log" `
+          -WindowStyle Hidden
 
 
-        & $tailscale up `
-          --authkey=$env:TAILSCALE_AUTH_KEY `
-          --hostname=github-windows-arm `
-          --accept-dns=true
+
+        Start-Sleep -Seconds 20
 
 
-        Write-Host "Waiting for Tailscale IP..."
+
+        Write-Host "========== Pinggy Output =========="
 
 
-        $timeout = 60
+        if (Test-Path C:\pinggy.log) {
 
-        while ($timeout -gt 0) {
-
-            $ip = & $tailscale ip 2>$null
-
-            if ($ip) {
-
-                Write-Host "Tailscale IP:"
-                Write-Host $ip
-                exit 0
-
-            }
-
-
-            Start-Sleep -Seconds 5
-
-            $timeout -= 5
+            Get-Content C:\pinggy.log
 
         }
 
 
-        Write-Host "Tailscale status:"
-        & $tailscale status
+        Write-Host "========== Pinggy Error =========="
 
 
-        throw "Tailscale failed to obtain IP."
+        if (Test-Path C:\pinggy-error.log) {
 
+            Get-Content C:\pinggy-error.log
 
-    - name: Show Tailscale IP
+        }
 
-      shell: powershell
-
-      run: |
-
-        $tailscale = "C:\Program Files\Tailscale\tailscale.exe"
-
-
-        Write-Host "RDP address:"
-
-
-        & $tailscale ip
 
 
 
     - name: Start autosave
-
       shell: powershell
-
       run: |
 
         Start-Process powershell.exe `
@@ -277,28 +185,32 @@ jobs:
 
 
 
+
+
     - name: Work session
-
       shell: powershell
-
       run: |
 
-        Write-Host "Windows workstation is ready."
-
-        Write-Host "Connect using the Tailscale IP."
+        Write-Host ""
+        Write-Host "===================================="
+        Write-Host "Windows workstation ready"
+        Write-Host "Check Pinggy address above"
+        Write-Host "RDP port forwarded to 3389"
+        Write-Host "===================================="
+        Write-Host ""
 
 
         while ($true) {
 
-          Start-Sleep `
-            -Seconds 300
+            Start-Sleep -Seconds 300
 
         }
 
 
 
-    - name: Final backup
 
+
+    - name: Final backup
       if: always()
 
       shell: powershell
