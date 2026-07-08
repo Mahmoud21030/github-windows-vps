@@ -86,7 +86,113 @@ jobs:
         Start-Process powershell.exe `
           -ArgumentList "-ExecutionPolicy Bypass -File .\scripts\autosave.ps1" `
           -WindowStyle Hidden
+          
+    - name: Enable RDP
+      shell: powershell
+      run: |
 
+        Write-Host "Enabling Remote Desktop."
+
+        Set-ItemProperty `
+          -Path "HKLM:\System\CurrentControlSet\Control\Terminal Server" `
+          -Name "fDenyTSConnections" `
+          -Value 0
+
+
+        Enable-NetFirewallRule `
+          -DisplayGroup "Remote Desktop"
+
+
+
+    - name: Create RDP user
+      shell: powershell
+      env:
+
+        RDP_USERNAME: ${{ secrets.RDP_USERNAME }}
+
+        RDP_PASSWORD: ${{ secrets.RDP_PASSWORD }}
+
+      run: |
+
+        Write-Host "Creating RDP user."
+
+
+        $password = ConvertTo-SecureString `
+          $env:RDP_PASSWORD `
+          -AsPlainText `
+          -Force
+
+
+        if (Get-LocalUser -Name $env:RDP_USERNAME -ErrorAction SilentlyContinue) {
+
+            Remove-LocalUser `
+              -Name $env:RDP_USERNAME
+
+        }
+
+
+        New-LocalUser `
+          -Name $env:RDP_USERNAME `
+          -Password $password `
+          -AccountNeverExpires
+
+
+        Add-LocalGroupMember `
+          -Group "Administrators" `
+          -Member $env:RDP_USERNAME
+
+
+
+    - name: Install cloudflared
+      shell: powershell
+      run: |
+
+        Write-Host "Downloading cloudflared."
+
+
+        $url = "https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-windows-amd64.exe"
+
+
+        New-Item `
+          -ItemType Directory `
+          -Force `
+          -Path "C:\Tools\cloudflared" | Out-Null
+
+
+        Invoke-WebRequest `
+          -Uri $url `
+          -OutFile "C:\Tools\cloudflared\cloudflared.exe"
+
+
+
+    - name: Start Cloudflare RDP tunnel
+      shell: powershell
+      env:
+
+        CLOUDFLARE_TUNNEL_TOKEN: ${{ secrets.CLOUDFLARE_TUNNEL_TOKEN }}
+
+      run: |
+
+        Write-Host "Starting Cloudflare tunnel."
+
+
+        Start-Process `
+          -FilePath "C:\Tools\cloudflared\cloudflared.exe" `
+          -ArgumentList @(
+              "tunnel",
+              "--no-autoupdate",
+              "run",
+              "--token",
+              $env:CLOUDFLARE_TUNNEL_TOKEN
+          ) `
+          -WindowStyle Hidden
+
+
+
+        Start-Sleep -Seconds 15
+
+
+        Write-Host "Cloudflare tunnel started."
 
 
     - name: Work session
