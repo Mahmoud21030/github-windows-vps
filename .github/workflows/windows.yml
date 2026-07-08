@@ -188,34 +188,71 @@ jobs:
 
 
     - name: Connect Tailscale
-
       shell: powershell
-
       env:
-
         TAILSCALE_AUTH_KEY: ${{ secrets.TAILSCALE_AUTH_KEY }}
 
       run: |
 
-        Write-Host "Connecting Tailscale."
-
-
         $tailscale = "C:\Program Files\Tailscale\tailscale.exe"
 
+        Write-Host "Checking Tailscale service..."
 
-        if (!(Test-Path $tailscale)) {
+        $service = Get-Service -Name "Tailscale" -ErrorAction SilentlyContinue
 
-          throw "tailscale.exe not found."
+        if ($null -eq $service) {
+            throw "Tailscale service not installed."
+        }
+
+
+        if ($service.Status -ne "Running") {
+
+            Start-Service Tailscale
+
+            Start-Sleep -Seconds 15
 
         }
 
 
-        & $tailscale up `
-          --force-reauth `
-          --authkey=$env:TAILSCALE_AUTH_KEY `
-          --hostname github-windows-runner
-          
+        Write-Host "Starting Tailscale login..."
 
+
+        & $tailscale up `
+          --authkey=$env:TAILSCALE_AUTH_KEY `
+          --hostname=github-windows-arm `
+          --accept-dns=true
+
+
+        Write-Host "Waiting for Tailscale IP..."
+
+
+        $timeout = 60
+
+        while ($timeout -gt 0) {
+
+            $ip = & $tailscale ip 2>$null
+
+            if ($ip) {
+
+                Write-Host "Tailscale IP:"
+                Write-Host $ip
+                exit 0
+
+            }
+
+
+            Start-Sleep -Seconds 5
+
+            $timeout -= 5
+
+        }
+
+
+        Write-Host "Tailscale status:"
+        & $tailscale status
+
+
+        throw "Tailscale failed to obtain IP."
 
 
     - name: Show Tailscale IP
