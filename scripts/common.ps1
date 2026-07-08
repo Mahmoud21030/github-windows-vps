@@ -211,185 +211,30 @@ function Invoke-RcloneRestore {
 
         [string]$Remote,
 
-        [            -Force `
-            -Path $folder | Out-Null
-
-    }
-
-    Add-Content `
-        -Path $script:LogFile `
-        -Value $line
-
-}
-
-
-
-# ---------- retry ----------
-
-function Invoke-Retry {
-
-    param(
-
-        [Parameter(Mandatory)]
-        [scriptblock]$Script,
-
-        [int]$Retries = 5,
-
-        [int]$DelaySeconds = 10
+        [string]$Local
 
     )
 
-    $last = $null
+    $rclone = Get-Rclone
 
-    for ($i = 1; $i -le $Retries; $i++) {
+    $config = Get-RcloneConfig
 
-        try {
-
-            Write-Log "Attempt $i"
-
-            & $Script
-
-            return
-
-        }
-        catch {
-
-            $last = $_
-
-            Write-Log $_.Exception.Message
-
-            if ($i -lt $Retries) {
-
-                Start-Sleep -Seconds $DelaySeconds
-
-            }
-
-        }
-
-    }
-
-    throw $last
-
-}
-
-
-
-# ---------- rclone ----------
-
-function Get-Rclone {
-
-    if (!(Test-Path $RcloneExe)) {
-
-        throw "rclone.exe not found at $RcloneExe"
-
-    }
-
-    return $RcloneExe
-
-}
-
-
-
-function Invoke-Rclone {
-
-    param(
-
-        [Parameter(Mandatory)]
-        [string[]]$Arguments
-
-    )
-
-    $exe = Get-Rclone
-
-    & $exe @Arguments
+    & $rclone sync `
+        $Remote `
+        $Local `
+        --config $config `
+        --transfers 8 `
+        --checkers 8 `
+        --fast-list `
+        --links `
+        --copy-links `
+        --retries 10 `
+        --low-level-retries 10 `
+        --log-level INFO
 
     if ($LASTEXITCODE -ne 0) {
 
-        throw "rclone exited with code $LASTEXITCODE"
-
-    }
-
-}
-
-
-
-# ---------- remote ----------
-
-function Get-Remote {
-
-    if ([string]::IsNullOrWhiteSpace($env:OCI_BUCKET)) {
-
-        throw "OCI_BUCKET is not set."
-
-    }
-
-    return "oci:$($env:OCI_BUCKET)/workspace"
-
-}
-
-
-
-# ---------- validation ----------
-
-function Test-RcloneConfig {
-
-    if (!(Test-Path $RcloneConfig)) {
-
-        throw "Missing rclone configuration."
-
-    }
-
-    Invoke-Rclone @(
-        "listremotes",
-        "--config",
-        $RcloneConfig
-    )
-
-}
-
-
-
-# ---------- workspace stats ----------
-
-function Get-WorkspaceStats {
-
-    if (!(Test-Path $Workspace)) {
-
-        return [PSCustomObject]@{
-            Files = 0
-            Directories = 0
-            SizeMB = 0
-        }
-
-    }
-
-    $files = Get-ChildItem `
-        $Workspace `
-        -File `
-        -Recurse `
-        -ErrorAction SilentlyContinue
-
-    $dirs = Get-ChildItem `
-        $Workspace `
-        -Directory `
-        -Recurse `
-        -ErrorAction SilentlyContinue
-
-    $size = ($files | Measure-Object Length -Sum).Sum
-
-    if ($null -eq $size) {
-
-        $size = 0
-
-    }
-
-    return [PSCustomObject]@{
-
-        Files = $files.Count
-
-        Directories = $dirs.Count
-
-        SizeMB = [Math]::Round($size / 1MB, 2)
+        throw "rclone restore failed ($LASTEXITCODE)"
 
     }
 
