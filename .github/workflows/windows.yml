@@ -3,6 +3,7 @@ name: Windows Temporary Workstation
 on:
   workflow_dispatch:
 
+
 jobs:
 
   workstation:
@@ -10,6 +11,7 @@ jobs:
     runs-on: windows-11-arm
 
     timeout-minutes: 355
+
 
     env:
 
@@ -25,6 +27,7 @@ jobs:
       OCI_BUCKET: ${{ secrets.OCI_BUCKET }}
 
 
+
     steps:
 
 
@@ -36,6 +39,7 @@ jobs:
     - name: Install rclone
       shell: powershell
       run: |
+
         .\scripts\install-rclone.ps1
 
 
@@ -43,6 +47,7 @@ jobs:
     - name: Configure OCI
       shell: powershell
       run: |
+
         .\scripts\configure-oci.ps1
 
 
@@ -50,6 +55,7 @@ jobs:
     - name: Prepare workspace
       shell: powershell
       run: |
+
         .\scripts\install.ps1
 
 
@@ -57,6 +63,7 @@ jobs:
     - name: Restore workspace
       shell: powershell
       run: |
+
         .\scripts\restore.ps1
 
 
@@ -80,12 +87,14 @@ jobs:
 
 
     - name: Create RDP user
+
       shell: powershell
 
       env:
 
         RDP_USERNAME: ${{ secrets.RDP_USERNAME }}
         RDP_PASSWORD: ${{ secrets.RDP_PASSWORD }}
+
 
       run: |
 
@@ -98,6 +107,7 @@ jobs:
           -Force
 
 
+
         if (Get-LocalUser -Name $env:RDP_USERNAME -ErrorAction SilentlyContinue) {
 
             Remove-LocalUser `
@@ -106,10 +116,12 @@ jobs:
         }
 
 
+
         New-LocalUser `
           -Name $env:RDP_USERNAME `
           -Password $password `
           -AccountNeverExpires
+
 
 
         Add-LocalGroupMember `
@@ -119,9 +131,10 @@ jobs:
 
 
 
+    - name: Check OpenSSH
 
-    - name: Install OpenSSH Client
       shell: powershell
+
       run: |
 
         Write-Host "Checking SSH"
@@ -133,41 +146,104 @@ jobs:
 
 
     - name: Start Pinggy RDP Tunnel
+
       shell: powershell
+
       run: |
 
-        Write-Host "Starting Pinggy tunnel"
+
+        Write-Host "Starting Pinggy SSH reverse tunnel"
 
 
-        Remove-Item C:\pinggy.log -ErrorAction SilentlyContinue
-        Remove-Item C:\pinggy-error.log -ErrorAction SilentlyContinue
+
+        Remove-Item `
+          C:\pinggy.log `
+          -ErrorAction SilentlyContinue
+
+
+
+        Remove-Item `
+          C:\pinggy-error.log `
+          -ErrorAction SilentlyContinue
+
+
 
 
         Start-Process `
           -FilePath "ssh.exe" `
           -ArgumentList "-tt -o StrictHostKeyChecking=no -o ServerAliveInterval=30 -o ExitOnForwardFailure=yes -p 443 -R0:localhost:3389 a.pinggy.io" `
           -RedirectStandardOutput "C:\pinggy.log" `
-          -RedirectStandardError "C:\pinggy-error.log"
+          -RedirectStandardError "C:\pinggy-error.log" `
+          -WindowStyle Hidden
+
 
 
 
         Start-Sleep -Seconds 30
 
 
-        Write-Host "========== Pinggy Tunnel =========="
 
 
-        Get-Content C:\pinggy.log -ErrorAction SilentlyContinue
+        Write-Host ""
+        Write-Host "==============================="
+        Write-Host "PINGGY OUTPUT"
+        Write-Host "==============================="
 
 
-        Get-Content C:\pinggy-error.log -ErrorAction SilentlyContinue
+
+        if (Test-Path C:\pinggy.log) {
+
+            Get-Content C:\pinggy.log
+
+        }
+
+
+
+
+        Write-Host ""
+        Write-Host "==============================="
+        Write-Host "PINGGY ERRORS"
+        Write-Host "==============================="
+
+
+
+        if (Test-Path C:\pinggy-error.log) {
+
+            Get-Content C:\pinggy-error.log
+
+        }
+
+
+
+
+
+    - name: Verify RDP service
+
+      shell: powershell
+
+      run: |
+
+
+        Write-Host "Checking RDP"
+
+
+
+        Get-Service TermService
+
+
+
+        netstat -ano | findstr :3389
+
 
 
 
 
     - name: Start autosave
+
       shell: powershell
+
       run: |
+
 
         Start-Process powershell.exe `
           -ArgumentList "-ExecutionPolicy Bypass -File .\scripts\autosave.ps1" `
@@ -178,16 +254,19 @@ jobs:
 
 
     - name: Work session
+
       shell: powershell
+
       run: |
 
+
         Write-Host ""
-        Write-Host "===================================="
-        Write-Host "Windows workstation ready"
-        Write-Host "Check Pinggy address above"
-        Write-Host "RDP port forwarded to 3389"
-        Write-Host "===================================="
+        Write-Host "================================"
+        Write-Host "Windows workstation is ready"
+        Write-Host "Use Pinggy RDP address above"
+        Write-Host "================================"
         Write-Host ""
+
 
 
         while ($true) {
@@ -201,10 +280,12 @@ jobs:
 
 
     - name: Final backup
+
       if: always()
 
       shell: powershell
 
       run: |
+
 
         .\scripts\finalize.ps1
