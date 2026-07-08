@@ -159,7 +159,7 @@ jobs:
 
 
         Invoke-WebRequest `
-          -Uri "https://pkgs.tailscale.com/stable/tailscale-setup-latest.exe" `
+          -Uri "https://pkgs.tailscale.com/stable/tailscale-setup-1.98.8-arm64.msi" `
           -OutFile "$folder\tailscale-setup.exe"
 
 
