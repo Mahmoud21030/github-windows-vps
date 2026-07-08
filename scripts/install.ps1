@@ -1,5 +1,4 @@
 # install.ps1
-# prepares the restored workspace environment
 
 . "$PSScriptRoot\common.ps1"
 
@@ -9,42 +8,47 @@ Start-Log "install"
 Write-Log "Starting workspace preparation."
 
 
-
 if (!(Test-Path $Workspace)) {
 
     New-Item `
         -ItemType Directory `
         -Force `
         -Path $Workspace | Out-Null
+
+    Write-Log "Created workspace directory."
+
 }
 
 
 
-$requiredDirs = @(
+$folders = @(
 
-    $Workspace
+    "Documents",
 
-    (Join-Path $Workspace "logs")
+    "Downloads",
 
-    (Join-Path $Workspace "config")
+    "Projects"
 
 )
 
 
 
-foreach ($dir in $requiredDirs) {
+foreach ($folder in $folders) {
 
 
-    if (!(Test-Path $dir)) {
+    $path = Join-Path $Workspace $folder
+
+
+    if (!(Test-Path $path)) {
 
 
         New-Item `
             -ItemType Directory `
             -Force `
-            -Path $dir | Out-Null
+            -Path $path | Out-Null
 
 
-        Write-Log "Created directory: $dir"
+        Write-Log "Created: $path"
 
     }
 
@@ -59,11 +63,9 @@ $os = Get-CimInstance `
     Win32_OperatingSystem
 
 
-Write-Log "Operating system: $($os.Caption)"
+Write-Log "OS: $($os.Caption)"
 
-
-
-Write-Log "PowerShell version: $($PSVersionTable.PSVersion)"
+Write-Log "PowerShell: $($PSVersionTable.PSVersion)"
 
 
 
