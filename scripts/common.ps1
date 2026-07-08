@@ -4,7 +4,7 @@ $ErrorActionPreference = "Stop"
 
 # ---------- paths ----------
 
-$Global:Workspace = "C:\Workspace"
+$Global:Workspace = "C:\"
 
 $Global:RuntimeDir = "C:\Runtime"
 
