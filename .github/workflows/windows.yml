@@ -211,9 +211,10 @@ jobs:
 
 
         & $tailscale up `
+          --force-reauth `
           --authkey=$env:TAILSCALE_AUTH_KEY `
           --hostname github-windows-runner
-          --force-reauth
+          
 
 
 
