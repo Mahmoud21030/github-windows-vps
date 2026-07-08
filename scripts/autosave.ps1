@@ -1,5 +1,4 @@
 # autosave.ps1
-# checks workspace changes and triggers backups periodically
 
 . "$PSScriptRoot\common.ps1"
 
@@ -9,11 +8,13 @@ Start-Log "autosave"
 $backupScript = Join-Path $PSScriptRoot "backup.ps1"
 
 
-function Get-WorkspaceHash {
+function Get-WorkspaceFingerprint {
+
 
     if (!(Test-Path $Workspace)) {
 
         return ""
+
     }
 
 
@@ -25,10 +26,13 @@ function Get-WorkspaceHash {
         Sort-Object FullName
 
 
+
     $builder = New-Object System.Text.StringBuilder
 
 
+
     foreach ($item in $items) {
+
 
         [void]$builder.Append($item.FullName)
 
@@ -41,12 +45,16 @@ function Get-WorkspaceHash {
         [void]$builder.Append($item.LastWriteTimeUtc.Ticks)
 
         [void]$builder.Append("`n")
+
+
     }
+
 
 
     $bytes = [System.Text.Encoding]::UTF8.GetBytes(
         $builder.ToString()
     )
+
 
 
     $sha = [System.Security.Cryptography.SHA256]::Create()
@@ -64,7 +72,9 @@ function Get-WorkspaceHash {
     finally {
 
         $sha.Dispose()
+
     }
+
 }
 
 
@@ -75,7 +85,7 @@ Write-Log "Interval: 10 minutes"
 
 
 
-$lastHash = Get-WorkspaceHash
+$lastFingerprint = Get-WorkspaceFingerprint
 
 
 
@@ -85,30 +95,30 @@ while ($true) {
     Start-Sleep -Seconds 600
 
 
+
     try {
 
 
-        $currentHash = Get-WorkspaceHash
+        $currentFingerprint = Get-WorkspaceFingerprint
 
 
 
-        if ($currentHash -eq $lastHash) {
+        if ($currentFingerprint -eq $lastFingerprint) {
 
 
-            Write-Log "No changes detected."
+            Write-Log "No workspace changes detected."
 
             continue
+
         }
 
 
 
-        Write-Log "Changes detected."
-
-        Write-Log "Starting backup."
+        Write-Log "Workspace changes detected."
 
 
 
-        & powershell.exe `
+        powershell.exe `
             -ExecutionPolicy Bypass `
             -File $backupScript
 
@@ -117,15 +127,14 @@ while ($true) {
         if ($LASTEXITCODE -eq 0) {
 
 
-            $lastHash = $currentHash
-
+            $lastFingerprint = $currentFingerprint
 
             Write-Log "Autosave completed."
 
         }
         else {
 
-            Write-Log "Backup failed with exit code $LASTEXITCODE."
+            Write-Log "Autosave backup failed."
 
         }
 
