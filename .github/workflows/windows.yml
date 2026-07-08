@@ -169,86 +169,68 @@ jobs:
 
 
     - name: Start Pinggy RDP Tunnel
-
       shell: powershell
-
       run: |
 
-
         Write-Host "================================"
-        Write-Host "Starting Pinggy SSH RDP Tunnel"
+        Write-Host "Starting Pinggy TCP tunnel"
         Write-Host "================================"
 
 
-
-        $logFile = "C:\pinggy.log"
-
-        $errorFile = "C:\pinggy-error.log"
-
-        $cmdFile = "C:\pinggy-start.cmd"
+        Remove-Item C:\pinggy.log -Force -ErrorAction SilentlyContinue
 
 
-
-        Remove-Item $logFile `
-          -Force `
-          -ErrorAction SilentlyContinue
-
-
-        Remove-Item $errorFile `
-          -Force `
-          -ErrorAction SilentlyContinue
-
-
-        $ssh = @"
-        ssh.exe -tt ^
-        -p 443 ^
-        -R0:localhost:3389 ^
-        tcp@free.pinggy.io
-        "@
+        $args = @(
+          "-o",
+          "StrictHostKeyChecking=no",
+          "-o",
+          "ServerAliveInterval=30",
+          "-o",
+          "ExitOnForwardFailure=yes",
+          "-p",
+          "443",
+          "-R",
+          "0:localhost:3389",
+          "tcp@free.pinggy.io"
+        )
 
 
-
-        Set-Content `
-          -Path $cmdFile `
-          -Value $ssh
-
-
+        Write-Host "Starting SSH..."
 
         Start-Process `
-          -FilePath cmd.exe `
-          -ArgumentList "/c $cmdFile > $logFile 2> $errorFile" `
+          -FilePath "ssh.exe" `
+          -ArgumentList $args `
+          -RedirectStandardOutput C:\pinggy.log `
+          -RedirectStandardError C:\pinggy-error.log `
           -WindowStyle Hidden
 
 
 
-        Write-Host "Waiting for Pinggy..."
-
-        Start-Sleep -Seconds 45
+        Start-Sleep -Seconds 20
 
 
 
         Write-Host ""
-        Write-Host "========== PINGGY OUTPUT =========="
+        Write-Host "========== OUTPUT =========="
 
-
-        if (Test-Path $logFile) {
-
-            Get-Content $logFile
-
+        if (Test-Path C:\pinggy.log) {
+            Get-Content C:\pinggy.log
         }
 
 
 
         Write-Host ""
-        Write-Host "========== PINGGY ERROR =========="
+        Write-Host "========== ERROR =========="
 
-
-        if (Test-Path $errorFile) {
-
-            Get-Content $errorFile
-
+        if (Test-Path C:\pinggy-error.log) {
+            Get-Content C:\pinggy-error.log
         }
 
+
+
+        Write-Host ""
+        Write-Host "Running SSH processes:"
+        Get-Process ssh -ErrorAction SilentlyContinue
 
 
     - name: Start Autosave
