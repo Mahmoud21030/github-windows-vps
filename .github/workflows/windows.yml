@@ -218,19 +218,19 @@ jobs:
 
 
 
-    - name: Show Tailscale IP
+    # - name: Show Tailscale IP
 
-      shell: powershell
+    #   shell: powershell
 
-      run: |
+    #   run: |
 
-        $tailscale = "C:\Program Files\Tailscale\tailscale.exe"
-
-
-        Write-Host "RDP address:"
+    #     $tailscale = "C:\Program Files\Tailscale\tailscale.exe"
 
 
-        & $tailscale ip
+    #     Write-Host "RDP address:"
+
+
+    #     & $tailscale ip
 
 
 
