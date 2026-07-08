@@ -1,12 +1,14 @@
 # install.ps1
 
+$ErrorActionPreference = "Stop"
+
 . "$PSScriptRoot\common.ps1"
 
-Start-Log "install"
+$LogFile = "install.log"
 
+Write-Log "Starting workspace preparation." $LogFile
 
-Write-Log "Starting workspace preparation."
-
+# create workspace
 
 if (!(Test-Path $Workspace)) {
 
@@ -15,11 +17,11 @@ if (!(Test-Path $Workspace)) {
         -Force `
         -Path $Workspace | Out-Null
 
-    Write-Log "Created workspace directory."
+    Write-Log "Created workspace directory." $LogFile
 
 }
 
-
+# create folders
 
 $folders = @(
 
@@ -27,46 +29,60 @@ $folders = @(
 
     "Downloads",
 
-    "Projects"
+    "Projects",
+
+    "Installers",
+
+    "Installed",
+
+    "config"
 
 )
 
-
-
 foreach ($folder in $folders) {
-
 
     $path = Join-Path $Workspace $folder
 
-
     if (!(Test-Path $path)) {
-
 
         New-Item `
             -ItemType Directory `
             -Force `
             -Path $path | Out-Null
 
-
-        Write-Log "Created: $path"
+        Write-Log "Created folder: $path" $LogFile
 
     }
 
 }
 
+# create installer state file
 
+$stateFile = Join-Path $Workspace ".installed"
 
-Write-Log "Checking Windows environment."
+if (!(Test-Path $stateFile)) {
 
+    New-Item `
+        -ItemType File `
+        -Path $stateFile `
+        -Force | Out-Null
 
-$os = Get-CimInstance `
-    Win32_OperatingSystem
+    Write-Log "Created installer state file." $LogFile
 
+}
 
-Write-Log "OS: $($os.Caption)"
+Write-Log "Checking Windows environment." $LogFile
 
-Write-Log "PowerShell: $($PSVersionTable.PSVersion)"
+$os = Get-CimInstance Win32_OperatingSystem
 
+Write-Log "OS: $($os.Caption)" $LogFile
 
+Write-Log "Version: $($os.Version)" $LogFile
 
-Write-Log "Workspace preparation completed."
+Write-Log "PowerShell: $($PSVersionTable.PSVersion)" $LogFile
+
+Write-Log "Workspace: $Workspace" $LogFile
+
+Write-Log "Runtime: $Runtime" $LogFile
+
+Write-Log "Workspace preparation completed." $LogFile
