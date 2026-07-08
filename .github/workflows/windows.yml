@@ -201,10 +201,6 @@ jobs:
 
         $ssh = @"
         ssh.exe -tt ^
-        # -o StrictHostKeyChecking=no ^
-        # -o ServerAliveInterval=30 ^
-        # -o ServerAliveCountMax=3 ^
-        # -o ExitOnForwardFailure=yes ^
         -p 443 ^
         -R0:localhost:3389 ^
         tcp@free.pinggy.io
