@@ -136,41 +136,31 @@ jobs:
       shell: powershell
       run: |
 
-
         Write-Host "Starting Pinggy tunnel"
+
+
+        Remove-Item C:\pinggy.log -ErrorAction SilentlyContinue
+        Remove-Item C:\pinggy-error.log -ErrorAction SilentlyContinue
 
 
         Start-Process `
           -FilePath "ssh.exe" `
-          -ArgumentList "-o StrictHostKeyChecking=no -o ServerAliveInterval=30 -p 443 -R0:localhost:3389 a.pinggy.io" `
+          -ArgumentList "-tt -o StrictHostKeyChecking=no -o ServerAliveInterval=30 -o ExitOnForwardFailure=yes -p 443 -R0:localhost:3389 a.pinggy.io" `
           -RedirectStandardOutput "C:\pinggy.log" `
-          -RedirectStandardError "C:\pinggy-error.log" `
-          -WindowStyle Hidden
+          -RedirectStandardError "C:\pinggy-error.log"
 
 
 
-        Start-Sleep -Seconds 20
+        Start-Sleep -Seconds 30
 
 
-
-        Write-Host "========== Pinggy Output =========="
-
-
-        if (Test-Path C:\pinggy.log) {
-
-            Get-Content C:\pinggy.log
-
-        }
+        Write-Host "========== Pinggy Tunnel =========="
 
 
-        Write-Host "========== Pinggy Error =========="
+        Get-Content C:\pinggy.log -ErrorAction SilentlyContinue
 
 
-        if (Test-Path C:\pinggy-error.log) {
-
-            Get-Content C:\pinggy-error.log
-
-        }
+        Get-Content C:\pinggy-error.log -ErrorAction SilentlyContinue
 
 
 
