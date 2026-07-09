@@ -226,7 +226,7 @@ jobs:
           "-o", "UserKnownHostsFile=NUL",
           "-o", "ServerAliveInterval=30",
           "-o", "ServerAliveCountMax=3",
-          "-R", "7970:localhost:3389",
+          "-R", "0:localhost:3389",
           "serveo.net"
         )
 
