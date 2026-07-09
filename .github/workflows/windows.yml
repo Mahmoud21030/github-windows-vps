@@ -257,33 +257,7 @@ jobs:
             Get-Content C:\serveo-error.log
         }
         
-    - name: Final network check
-
-      shell: powershell
-
-      run: |
-
-        Write-Host "=============================="
-        Write-Host "FINAL CHECK"
-        Write-Host "=============================="
-
-
-        Write-Host "IP addresses"
-
-        ipconfig
-
-
-
-        Write-Host "RDP Port"
-
-        netstat -ano | findstr :3389
-
-
-
-        Write-Host "Tailscale"
-
-        & "C:\Program Files\Tailscale\tailscale.exe" status
-
+   
 
 
 
