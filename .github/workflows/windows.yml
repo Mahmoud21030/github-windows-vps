@@ -84,7 +84,7 @@ jobs:
         .\scripts\restore.ps1
 
 
-      - name: Enable RDP
+    - name: Enable RDP
 
       shell: powershell
 
