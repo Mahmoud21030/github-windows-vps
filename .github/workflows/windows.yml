@@ -213,9 +213,13 @@ jobs:
       shell: powershell
     
       run: |
+    
         ssh -vvv `
+          -T `
           -p 443 `
           -o StrictHostKeyChecking=no `
+          -o ServerAliveInterval=30 `
+          -o ExitOnForwardFailure=yes `
           -R0:localhost:3389 `
           tcp@a.pinggy.io
         
