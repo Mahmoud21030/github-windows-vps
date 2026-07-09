@@ -197,103 +197,66 @@ jobs:
         qwinsta
 
 
-
-    - name: Install Tailscale ARM64
+    - name: Install OpenSSH Client
 
       shell: powershell
 
       run: |
 
-        Write-Host "=============================="
-        Write-Host "Installing Tailscale ARM64"
-        Write-Host "=============================="
+        Write-Host "Checking SSH..."
+
+        ssh -V
 
 
-        $folder="C:\Tools\Tailscale"
+    - name: Start Serveo RDP Tunnel
+
+      shell: powershell
+
+      run: |
+
+        Write-Host "================================="
+        Write-Host "Starting Serveo RDP tunnel"
+        Write-Host "================================="
 
 
-        New-Item `
-          -ItemType Directory `
-          -Force `
-          -Path $folder | Out-Null
+        # Disable strict host checking for automation
 
-
-
-        Invoke-WebRequest `
-          -Uri "https://pkgs.tailscale.com/stable/tailscale-setup-1.98.8-arm64.msi" `
-          -OutFile "$folder\tailscale.msi"
-
+        $sshOptions = @(
+          "-o", "StrictHostKeyChecking=no",
+          "-o", "UserKnownHostsFile=NUL",
+          "-o", "ServerAliveInterval=30",
+          "-o", "ServerAliveCountMax=3",
+          "-R", "80:localhost:3389",
+          "serveo.net"
+        )
 
 
         Start-Process `
-          msiexec.exe `
-          -ArgumentList "/i $folder\tailscale.msi /quiet /norestart" `
-          -Wait
+          -FilePath "ssh.exe" `
+          -ArgumentList $sshOptions `
+          -RedirectStandardOutput "C:\serveo.log" `
+          -RedirectStandardError "C:\serveo-error.log" `
+          -WindowStyle Hidden
 
 
 
-        Start-Sleep -Seconds 15
+        Start-Sleep -Seconds 20
 
 
 
-        Start-Service Tailscale
+        Write-Host "========== SERVEO OUTPUT =========="
+
+        if (Test-Path C:\serveo.log) {
+            Get-Content C:\serveo.log
+        }
 
 
+        Write-Host "========== SERVEO ERROR =========="
 
-        Write-Host "Tailscale installed"
-
-
-
-    - name: Restart and connect Tailscale
-      shell: powershell
-      env:
-        TAILSCALE_AUTH_KEY: ${{ secrets.TAILSCALE_AUTH_KEY }}
-    
-      run: |
-    
-        $tailscale = "C:\Program Files\Tailscale\tailscale.exe"
-    
-        Write-Host "Stopping Tailscale"
-    
-        Stop-Service Tailscale -Force
-    
-        Start-Sleep -Seconds 5
-    
-    
-        Write-Host "Starting Tailscale"
-    
-        Start-Service Tailscale
-    
-        Start-Sleep -Seconds 30
-    
-    
-        Write-Host "Checking daemon"
-    
-        & $tailscale status
-    
-    
-        Write-Host "Connecting"
-    
-        & $tailscale up `
-          --authkey="$env:TAILSCALE_AUTH_KEY" `
-          --hostname="github-win11-arm64" `
-          --reset
-    
-    
-        Start-Sleep -Seconds 30
-    
-    
-        Write-Host "Final status"
-    
-        & $tailscale status
-    
-    
-        Write-Host "IP"
-    
-        & $tailscale ip -4
-            
-
-
+        if (Test-Path C:\serveo-error.log) {
+            Get-Content C:\serveo-error.log
+        }
+        
     - name: Final network check
 
       shell: powershell
