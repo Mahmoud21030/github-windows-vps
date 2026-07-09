@@ -208,54 +208,29 @@ jobs:
         ssh -V
 
 
-    - name: Start Serveo RDP Tunnel
+    - name: Start Pinggy Background
 
       shell: powershell
-
+    
       run: |
-
-        Write-Host "================================="
-        Write-Host "Starting Serveo RDP tunnel"
-        Write-Host "================================="
-
-
-        # Disable strict host checking for automation
-
-        $sshOptions = @(
-          "-o", "StrictHostKeyChecking=no",
-          "-o", "UserKnownHostsFile=NUL",
-          "-o", "ServerAliveInterval=30",
-          "-o", "ServerAliveCountMax=3",
-          "-R", "0:localhost:3389",
-          "serveo.net"
-        )
-
-
+    
         Start-Process `
-          -FilePath "ssh.exe" `
-          -ArgumentList $sshOptions `
-          -RedirectStandardOutput "C:\serveo.log" `
-          -RedirectStandardError "C:\serveo-error.log" `
+          ssh.exe `
+          -ArgumentList "-p 443 -o StrictHostKeyChecking=no -o ServerAliveInterval=30 -R0:localhost:3389 tcp@a.pinggy.io" `
+          -RedirectStandardOutput C:\pinggy.log `
+          -RedirectStandardError C:\pinggy-error.log `
           -WindowStyle Hidden
-
-
-
+    
+    
         Start-Sleep -Seconds 20
-
-
-
-        Write-Host "========== SERVEO OUTPUT =========="
-
-        if (Test-Path C:\serveo.log) {
-            Get-Content C:\serveo.log
-        }
-
-
-        Write-Host "========== SERVEO ERROR =========="
-
-        if (Test-Path C:\serveo-error.log) {
-            Get-Content C:\serveo-error.log
-        }
+    
+    
+        Write-Host "===== Pinggy ====="
+        Get-Content C:\pinggy.log
+    
+    
+        Write-Host "===== Errors ====="
+        Get-Content C:\pinggy-error.log
         
    
 
