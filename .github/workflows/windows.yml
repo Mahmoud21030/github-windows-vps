@@ -84,22 +84,41 @@ jobs:
         .\scripts\restore.ps1
 
 
-    - name: Enable RDP
+      - name: Enable RDP
 
       shell: powershell
 
       run: |
 
-        Write-Host "Enabling Remote Desktop."
+        Write-Host "=============================="
+        Write-Host "Enabling Remote Desktop"
+        Write-Host "=============================="
 
+
+        # Enable RDP
         Set-ItemProperty `
           -Path "HKLM:\System\CurrentControlSet\Control\Terminal Server" `
           -Name "fDenyTSConnections" `
           -Value 0
 
 
+        # Enable firewall rules
         Enable-NetFirewallRule `
           -DisplayGroup "Remote Desktop"
+
+
+        # Disable NLA (better compatibility for temporary runners)
+        Set-ItemProperty `
+          -Path "HKLM:\SYSTEM\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp" `
+          -Name "UserAuthentication" `
+          -Value 0
+
+
+        # Restart RDP service
+        Restart-Service TermService -Force
+
+
+        Write-Host "RDP enabled"
 
 
 
@@ -116,7 +135,9 @@ jobs:
 
       run: |
 
-        Write-Host "Creating RDP user."
+        Write-Host "=============================="
+        Write-Host "Creating RDP User"
+        Write-Host "=============================="
 
 
         $password = ConvertTo-SecureString `
@@ -127,8 +148,8 @@ jobs:
 
         if (Get-LocalUser -Name $env:RDP_USERNAME -ErrorAction SilentlyContinue) {
 
-          Remove-LocalUser `
-            -Name $env:RDP_USERNAME
+            Remove-LocalUser `
+              -Name $env:RDP_USERNAME
 
         }
 
@@ -139,9 +160,41 @@ jobs:
           -AccountNeverExpires
 
 
+
         Add-LocalGroupMember `
           -Group "Administrators" `
           -Member $env:RDP_USERNAME
+
+
+
+        Add-LocalGroupMember `
+          -Group "Remote Desktop Users" `
+          -Member $env:RDP_USERNAME
+
+
+
+        Write-Host "User created"
+
+
+
+    - name: Verify RDP
+
+      shell: powershell
+
+      run: |
+
+        Write-Host "=============================="
+        Write-Host "Checking RDP"
+        Write-Host "=============================="
+
+
+        Get-Service TermService
+
+
+        netstat -ano | findstr :3389
+
+
+        qwinsta
 
 
 
@@ -151,10 +204,12 @@ jobs:
 
       run: |
 
-        Write-Host "Installing Tailscale ARM64."
+        Write-Host "=============================="
+        Write-Host "Installing Tailscale ARM64"
+        Write-Host "=============================="
 
 
-        $folder = "C:\Tools\Tailscale"
+        $folder="C:\Tools\Tailscale"
 
 
         New-Item `
@@ -163,31 +218,29 @@ jobs:
           -Path $folder | Out-Null
 
 
+
         Invoke-WebRequest `
           -Uri "https://pkgs.tailscale.com/stable/tailscale-setup-1.98.8-arm64.msi" `
-          -OutFile "$folder\tailscale-arm64.msi"
+          -OutFile "$folder\tailscale.msi"
 
 
 
         Start-Process `
           msiexec.exe `
-          -ArgumentList "/i $folder\tailscale-arm64.msi /quiet /norestart" `
+          -ArgumentList "/i $folder\tailscale.msi /quiet /norestart" `
           -Wait
 
 
 
-        Start-Sleep -Seconds 10
+        Start-Sleep -Seconds 15
 
 
 
-        if (!(Test-Path "C:\Program Files\Tailscale\tailscale.exe")) {
-
-          throw "Tailscale ARM64 installation failed."
-
-        }
+        Start-Service Tailscale
 
 
-        Write-Host "Tailscale ARM64 installed."
+
+        Write-Host "Tailscale installed"
 
 
 
@@ -202,57 +255,89 @@ jobs:
 
       run: |
 
-
-        Write-Host "Connecting Tailscale."
-
-
-        $tailscale = "C:\Program Files\Tailscale\tailscale.exe"
+        Write-Host "=============================="
+        Write-Host "Connecting Tailscale"
+        Write-Host "=============================="
 
 
+        $tailscale="C:\Program Files\Tailscale\tailscale.exe"
 
-        if (!(Test-Path $tailscale)) {
 
-          throw "tailscale.exe not found."
+
+        # Wait for daemon
+
+        for ($i=0; $i -lt 30; $i++) {
+
+
+            $health=& $tailscale health 2>&1
+
+
+            Write-Host $health
+
+
+            if ($health -notmatch "starting") {
+
+                break
+
+            }
+
+
+            Start-Sleep -Seconds 5
 
         }
 
 
 
         & $tailscale up `
-          --authkey=$env:TAILSCALE_AUTH_KEY `
-          --hostname github-windows-arm64
+          --authkey="$env:TAILSCALE_AUTH_KEY" `
+          --hostname="github-win11-arm64" `
+          --accept-routes
 
-    - name: Debug Tailscale
+
+
+        Start-Sleep -Seconds 20
+
+
+
+        Write-Host "Tailscale status"
+
+        & $tailscale status
+
+
+
+        Write-Host "Tailscale IP"
+
+        & $tailscale ip -4
+
+
+
+    - name: Final network check
+
       shell: powershell
+
       run: |
-        Get-Service Tailscale | Format-List *
-    
-        sc.exe query Tailscale
-    
-        & "C:\Program Files\Tailscale\tailscale.exe" version
-    
+
+        Write-Host "=============================="
+        Write-Host "FINAL CHECK"
+        Write-Host "=============================="
+
+
+        Write-Host "IP addresses"
+
+        ipconfig
+
+
+
+        Write-Host "RDP Port"
+
+        netstat -ano | findstr :3389
+
+
+
+        Write-Host "Tailscale"
+
         & "C:\Program Files\Tailscale\tailscale.exe" status
-    
-        & "C:\Program Files\Tailscale\tailscale.exe" debug daemon-logs
 
-    - name: Show Tailscale IP
-
-      shell: powershell
-
-      run: |
-
-
-        $tailscale = "C:\Program Files\Tailscale\tailscale.exe"
-
-
-
-        Write-Host "================================"
-        Write-Host "RDP ADDRESS"
-        Write-Host "================================"
-
-
-
-        & $tailscale ip
 
 
 
