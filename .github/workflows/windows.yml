@@ -76,12 +76,12 @@ jobs:
         .\scripts\install.ps1
 
 
-    - name: Restore workspace
+    # - name: Restore workspace
 
-      shell: powershell
+    #   shell: powershell
 
-      run: |
-        .\scripts\restore.ps1
+    #   run: |
+    #     .\scripts\restore.ps1
 
 
     - name: Enable RDP
@@ -208,29 +208,16 @@ jobs:
         ssh -V
 
 
-    - name: Start Pinggy Background
-
+    - name: Pinggy Debug
+    
       shell: powershell
     
       run: |
-    
-        Start-Process `
-          ssh.exe `
-          -ArgumentList "-p 443 -o StrictHostKeyChecking=no -o ServerAliveInterval=30 -R0:localhost:3389 tcp@a.pinggy.io" `
-          -RedirectStandardOutput C:\pinggy.log `
-          -RedirectStandardError C:\pinggy-error.log `
-          -WindowStyle Hidden
-    
-    
-        Start-Sleep -Seconds 20
-    
-    
-        Write-Host "===== Pinggy ====="
-        Get-Content C:\pinggy.log
-    
-    
-        Write-Host "===== Errors ====="
-        Get-Content C:\pinggy-error.log
+        ssh -vvv `
+          -p 443 `
+          -o StrictHostKeyChecking=no `
+          -R0:localhost:3389 `
+          tcp@a.pinggy.io
         
    
 
