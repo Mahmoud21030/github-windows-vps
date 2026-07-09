@@ -1,8 +1,7 @@
-name: Windows Temporary Workstation
+name: Windows Temporary Workstation ARM64
 
 on:
   workflow_dispatch:
-
 
 jobs:
 
@@ -11,7 +10,6 @@ jobs:
     runs-on: windows-11-arm
 
     timeout-minutes: 355
-
 
     env:
 
@@ -27,49 +25,72 @@ jobs:
       OCI_BUCKET: ${{ secrets.OCI_BUCKET }}
 
 
-
     steps:
 
 
     - name: Checkout repository
+
       uses: actions/checkout@v4
 
 
+    - name: Verify ARM64 environment
+
+      shell: powershell
+
+      run: |
+        Write-Host "=============================="
+        Write-Host "System Architecture"
+        Write-Host "=============================="
+
+        Write-Host "Processor:"
+        echo $env:PROCESSOR_ARCHITECTURE
+
+        Write-Host "OS Architecture:"
+        (Get-CimInstance Win32_OperatingSystem).OSArchitecture
+
+        Write-Host "Windows Version:"
+        Get-ComputerInfo | Select-Object WindowsProductName
+
 
     - name: Install rclone
+
       shell: powershell
+
       run: |
         .\scripts\install-rclone.ps1
 
 
-
     - name: Configure OCI
+
       shell: powershell
+
       run: |
         .\scripts\configure-oci.ps1
 
 
-
     - name: Prepare workspace
+
       shell: powershell
+
       run: |
         .\scripts\install.ps1
 
 
-
     - name: Restore workspace
+
       shell: powershell
+
       run: |
         .\scripts\restore.ps1
 
 
-
     - name: Enable RDP
+
       shell: powershell
+
       run: |
 
-        Write-Host "Enabling RDP"
-
+        Write-Host "Enabling Remote Desktop."
 
         Set-ItemProperty `
           -Path "HKLM:\System\CurrentControlSet\Control\Terminal Server" `
@@ -81,28 +102,21 @@ jobs:
           -DisplayGroup "Remote Desktop"
 
 
-        Set-Service `
-          -Name TermService `
-          -StartupType Automatic
 
-
-        # Restart-Service TermService
-
-
-
-    - name: Create RDP User
+    - name: Create RDP user
 
       shell: powershell
 
       env:
 
         RDP_USERNAME: ${{ secrets.RDP_USERNAME }}
+
         RDP_PASSWORD: ${{ secrets.RDP_PASSWORD }}
 
 
       run: |
 
-        Write-Host "Creating RDP user"
+        Write-Host "Creating RDP user."
 
 
         $password = ConvertTo-SecureString `
@@ -111,17 +125,12 @@ jobs:
           -Force
 
 
+        if (Get-LocalUser -Name $env:RDP_USERNAME -ErrorAction SilentlyContinue) {
 
-        if (Get-LocalUser `
-            -Name $env:RDP_USERNAME `
-            -ErrorAction SilentlyContinue) {
-
-
-            Remove-LocalUser `
-              -Name $env:RDP_USERNAME
+          Remove-LocalUser `
+            -Name $env:RDP_USERNAME
 
         }
-
 
 
         New-LocalUser `
@@ -130,94 +139,113 @@ jobs:
           -AccountNeverExpires
 
 
-
         Add-LocalGroupMember `
-          -Group Administrators `
+          -Group "Administrators" `
           -Member $env:RDP_USERNAME
 
 
 
-
-    - name: Verify RDP
+    - name: Install Tailscale ARM64
 
       shell: powershell
 
       run: |
 
-
-        Get-Service TermService
-
-
-        netstat -ano | findstr :3389
+        Write-Host "Installing Tailscale ARM64."
 
 
+        $folder = "C:\Tools\Tailscale"
 
 
-
-    - name: Start Serveo RDP Tunnel
-      shell: powershell
-      run: |
-
-        Write-Host "================================"
-        Write-Host "Starting Serveo SSH RDP Tunnel"
-        Write-Host "================================"
-
-
-        Remove-Item C:\serveo.log `
+        New-Item `
+          -ItemType Directory `
           -Force `
-          -ErrorAction SilentlyContinue
+          -Path $folder | Out-Null
 
 
-        Remove-Item C:\serveo-error.log `
-          -Force `
-          -ErrorAction SilentlyContinue
+        Invoke-WebRequest `
+          -Uri "https://pkgs.tailscale.com/stable/tailscale-setup-1.98.8-arm64.msi" `
+          -OutFile "$folder\tailscale-arm64.msi"
 
 
 
         Start-Process `
-          -FilePath "ssh.exe" `
-          -ArgumentList @(
-              "-o",
-              "StrictHostKeyChecking=no",
-              "-o",
-              "ServerAliveInterval=30",
-              "-R",
-              "0:localhost:3389",
-              "serveo.net"
-          ) `
-          -RedirectStandardOutput C:\serveo.log `
-          -RedirectStandardError C:\serveo-error.log `
-          -WindowStyle Hidden
+          msiexec.exe `
+          -ArgumentList "/i $folder\tailscale-arm64.msi /quiet /norestart" `
+          -Wait
 
 
 
-        Start-Sleep -Seconds 30
+        Start-Sleep -Seconds 10
 
 
 
-        Write-Host ""
-        Write-Host "========== SERVEO OUTPUT =========="
+        if (!(Test-Path "C:\Program Files\Tailscale\tailscale.exe")) {
+
+          throw "Tailscale ARM64 installation failed."
+
+        }
 
 
-        if (Test-Path C:\serveo.log) {
+        Write-Host "Tailscale ARM64 installed."
 
-            Get-Content C:\serveo.log
+
+
+    - name: Connect Tailscale
+
+      shell: powershell
+
+      env:
+
+        TAILSCALE_AUTH_KEY: ${{ secrets.TAILSCALE_AUTH_KEY }}
+
+
+      run: |
+
+
+        Write-Host "Connecting Tailscale."
+
+
+        $tailscale = "C:\Program Files\Tailscale\tailscale.exe"
+
+
+
+        if (!(Test-Path $tailscale)) {
+
+          throw "tailscale.exe not found."
 
         }
 
 
 
-        Write-Host ""
-        Write-Host "========== SERVEO ERROR =========="
+        & $tailscale up `
+          --authkey=$env:TAILSCALE_AUTH_KEY `
+          --hostname github-windows-arm64
 
 
-        if (Test-Path C:\serveo-error.log) {
 
-            Get-Content C:\serveo-error.log
+    - name: Show Tailscale IP
 
-        }
+      shell: powershell
 
-    - name: Start Autosave
+      run: |
+
+
+        $tailscale = "C:\Program Files\Tailscale\tailscale.exe"
+
+
+
+        Write-Host "================================"
+        Write-Host "RDP ADDRESS"
+        Write-Host "================================"
+
+
+
+        & $tailscale ip
+
+
+
+    - name: Start autosave
 
       shell: powershell
 
@@ -230,34 +258,29 @@ jobs:
 
 
 
-
-
-    - name: Work Session
+    - name: Work session
 
       shell: powershell
 
       run: |
 
 
-        Write-Host ""
-        Write-Host "===================================="
-        Write-Host "WINDOWS WORKSTATION READY"
-        Write-Host "Use Pinggy RDP address from logs"
-        Write-Host "===================================="
+        Write-Host "================================"
+        Write-Host "Windows ARM64 workstation ready"
+        Write-Host "Connect using Tailscale IP"
+        Write-Host "================================"
 
 
 
         while ($true) {
 
-            Start-Sleep -Seconds 300
+          Start-Sleep -Seconds 300
 
         }
 
 
 
-
-
-    - name: Final Backup
+    - name: Final backup
 
       if: always()
 
