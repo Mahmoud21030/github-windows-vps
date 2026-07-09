@@ -244,28 +244,54 @@ jobs:
 
 
 
-    - name: Connect Tailscale
+    - name: Restart and connect Tailscale
       shell: powershell
       env:
         TAILSCALE_AUTH_KEY: ${{ secrets.TAILSCALE_AUTH_KEY }}
+    
       run: |
     
-       $tailscale = "C:\Program Files\Tailscale\tailscale.exe"
-
-        Get-Service Tailscale
-        
-        sc.exe query Tailscale
-        
-        & $tailscale version
-        
-        Write-Host "=== Running tailscale up ==="
-        & $tailscale up --authkey="$env:TAILSCALE_AUTH_KEY" --hostname="github-win11-arm64"
-        
-        Write-Host "Exit code: $LASTEXITCODE"
-        
-        Write-Host "=== Daemon logs ==="
-        & $tailscale debug daemon-logs
-        
+        $tailscale = "C:\Program Files\Tailscale\tailscale.exe"
+    
+        Write-Host "Stopping Tailscale"
+    
+        Stop-Service Tailscale -Force
+    
+        Start-Sleep -Seconds 5
+    
+    
+        Write-Host "Starting Tailscale"
+    
+        Start-Service Tailscale
+    
+        Start-Sleep -Seconds 30
+    
+    
+        Write-Host "Checking daemon"
+    
+        & $tailscale status
+    
+    
+        Write-Host "Connecting"
+    
+        & $tailscale up `
+          --authkey="$env:TAILSCALE_AUTH_KEY" `
+          --hostname="github-win11-arm64" `
+          --reset
+    
+    
+        Start-Sleep -Seconds 30
+    
+    
+        Write-Host "Final status"
+    
+        & $tailscale status
+    
+    
+        Write-Host "IP"
+    
+        & $tailscale ip -4
+            
 
 
     - name: Final network check
