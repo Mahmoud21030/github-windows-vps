@@ -222,7 +222,18 @@ jobs:
           --authkey=$env:TAILSCALE_AUTH_KEY `
           --hostname github-windows-arm64
 
-
+    - name: Debug Tailscale
+      shell: powershell
+      run: |
+        Get-Service Tailscale | Format-List *
+    
+        sc.exe query Tailscale
+    
+        & "C:\Program Files\Tailscale\tailscale.exe" version
+    
+        & "C:\Program Files\Tailscale\tailscale.exe" status
+    
+        & "C:\Program Files\Tailscale\tailscale.exe" debug daemon-logs
 
     - name: Show Tailscale IP
 
