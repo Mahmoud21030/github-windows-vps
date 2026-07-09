@@ -245,68 +245,40 @@ jobs:
 
 
     - name: Connect Tailscale
-
       shell: powershell
-
       env:
-
         TAILSCALE_AUTH_KEY: ${{ secrets.TAILSCALE_AUTH_KEY }}
-
-
       run: |
-
-        Write-Host "=============================="
-        Write-Host "Connecting Tailscale"
-        Write-Host "=============================="
-
-
-        $tailscale="C:\Program Files\Tailscale\tailscale.exe"
-
-
-
-        # Wait for daemon
-
-        for ($i=0; $i -lt 30; $i++) {
-
-
-            $health=& $tailscale health 2>&1
-
-
-            Write-Host $health
-
-
-            if ($health -notmatch "starting") {
-
-                break
-
-            }
-
-
-            Start-Sleep -Seconds 5
-
-        }
-
-
-
+    
+        $tailscale = "C:\Program Files\Tailscale\tailscale.exe"
+    
+        Start-Service Tailscale -ErrorAction SilentlyContinue
+    
+        Start-Sleep -Seconds 10
+    
         & $tailscale up `
           --authkey="$env:TAILSCALE_AUTH_KEY" `
-          --hostname="github-win11-arm64" `
-          --accept-routes
-
-
-
-        Start-Sleep -Seconds 20
-
-
-
-        Write-Host "Tailscale status"
-
+          --hostname="github-win11-arm64"
+    
+        Write-Host "Waiting for Tailscale..."
+    
+        for ($i = 0; $i -lt 24; $i++) {
+    
+            $status = & $tailscale status 2>&1
+    
+            Write-Host $status
+    
+            if ($LASTEXITCODE -eq 0 -and $status -notmatch "NoState") {
+                break
+            }
+    
+            Start-Sleep -Seconds 5
+        }
+    
+        Write-Host "Final status:"
         & $tailscale status
-
-
-
-        Write-Host "Tailscale IP"
-
+    
+        Write-Host "IPv4:"
         & $tailscale ip -4
 
 
