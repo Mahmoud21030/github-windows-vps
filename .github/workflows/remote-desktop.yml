@@ -1,0 +1,114 @@
+name: Remote Desktop (Windows RDP + Android) over Tailscale
+
+on:
+  workflow_dispatch:
+    inputs:
+      hours:
+        description: "مدة التشغيل بالساعات (الحد الأقصى 6)"
+        default: "5"
+      android:
+        description: "شغّل Android emulator كمان"
+        type: boolean
+        default: true
+
+jobs:
+  windows-rdp:
+    runs-on: windows-latest
+    timeout-minutes: 360
+    steps:
+      - name: Enable RDP + set password
+        shell: pwsh
+        env:
+          RDP_PASSWORD: ${{ secrets.RDP_PASSWORD }}
+        run: |
+          if (-not $env:RDP_PASSWORD) { throw "ضيف secret اسمه RDP_PASSWORD" }
+          Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server' -Name fDenyTSConnections -Value 0
+          Enable-NetFirewallRule -DisplayGroup "Remote Desktop"
+          Set-LocalUser -Name runneradmin -Password (ConvertTo-SecureString $env:RDP_PASSWORD -AsPlainText -Force)
+          Restart-Service TermService -Force
+
+      - name: Tailscale
+        uses: tailscale/github-action@v3
+        with:
+          authkey: ${{ secrets.TAILSCALE_AUTH_KEY }}
+          hostname: gh-windows
+
+      - name: Keep alive
+        shell: pwsh
+        env:
+          HOURS: ${{ inputs.hours }}
+        run: |
+          $ip = (tailscale ip -4 | Select-Object -First 1)
+          Write-Host "=========================================="
+          Write-Host " RDP  ->  $ip : 3389"
+          Write-Host " User ->  runneradmin"
+          Write-Host " Stop ->  اعمل ملف C:\stop.txt أو Cancel للـ run"
+          Write-Host "=========================================="
+          $end = (Get-Date).AddHours([double]$env:HOURS)
+          while ((Get-Date) -lt $end -and -not (Test-Path 'C:\stop.txt')) { Start-Sleep -Seconds 30 }
+
+      # الـ runner بيتمسح في الآخر، فبنرفع الملفات كـ artifact
+      - name: Save files
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-files
+          path: |
+            C:\Users\runneradmin\Downloads
+            C:\Users\runneradmin\Desktop
+            C:\Users\runneradmin\Pictures
+          if-no-files-found: ignore
+
+  android:
+    if: ${{ inputs.android }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 360
+    steps:
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+
+      - name: Tailscale
+        uses: tailscale/github-action@v3
+        with:
+          authkey: ${{ secrets.TAILSCALE_AUTH_KEY }}
+          hostname: gh-android
+
+      - name: Install desktop + emulator
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y xvfb x11vnc fluxbox libpulse0 libgl1 libnss3
+          export PATH=$ANDROID_HOME/cmdline-tools/latest/bin:$ANDROID_HOME/platform-tools:$ANDROID_HOME/emulator:$PATH
+          yes | sdkmanager --licenses > /dev/null || true
+          sdkmanager "emulator" "platform-tools" "system-images;android-34;google_apis_playstore;x86_64"
+          echo no | avdmanager create avd -n pixel -k "system-images;android-34;google_apis_playstore;x86_64" -d pixel_6 --force
+
+      - name: Start Xvfb + VNC + emulator
+        env:
+          VNC_PASSWORD: ${{ secrets.RDP_PASSWORD }}
+        run: |
+          export PATH=$ANDROID_HOME/platform-tools:$ANDROID_HOME/emulator:$PATH
+          export DISPLAY=:1
+          Xvfb :1 -screen 0 1280x1000x24 &
+          sleep 2
+          fluxbox &
+          x11vnc -storepasswd "$VNC_PASSWORD" /tmp/vncpass
+          x11vnc -display :1 -forever -shared -rfbauth /tmp/vncpass -rfbport 5900 -bg -o /tmp/x11vnc.log
+          nohup emulator -avd pixel -no-audio -no-boot-anim -gpu swiftshader_indirect -no-snapshot -accel on > /tmp/emulator.log 2>&1 &
+          adb wait-for-device
+          until [ "$(adb shell getprop sys.boot_completed | tr -d '\r')" = "1" ]; do sleep 5; done
+          echo "Android booted"
+
+      - name: Keep alive
+        env:
+          HOURS: ${{ inputs.hours }}
+        run: |
+          IP=$(tailscale ip -4 | head -n1)
+          echo "=========================================="
+          echo " Android (VNC) -> $IP:5900"
+          echo " كلمة السر: نفس RDP_PASSWORD (أول 8 حروف)"
+          echo "=========================================="
+          END=$(( $(date +%s) + ${HOURS%.*} * 3600 ))
+          while [ "$(date +%s)" -lt "$END" ]; do sleep 30; done
